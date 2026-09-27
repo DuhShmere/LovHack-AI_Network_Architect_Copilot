@@ -5,6 +5,31 @@ config, and a **validation report** proving the design is actually correct.
 
 Built for LovHack Season 3 (Sept 26 – Oct 4, 2026).
 
+## Current status
+
+- **`pipeline/llm_layer.py`** — done. `parse_requirements()` calls the
+  Anthropic API, extracts JSON robustly (handles code fences and surrounding
+  prose), retries once on a malformed/invalid response before raising
+  `RequirementParseError`, and separately handles transient API failures
+  (rate limits, connection errors, server overload — retried once, then
+  `RequirementServiceError`) vs. non-retryable ones (bad auth/request — raised
+  immediately).
+- **`pipeline/api/routes.py`** — `POST /parse` (LLM extraction only, no
+  `engine/` dependency) and `POST /design` (full pipeline) are wired up.
+  `RequirementParseError` → 422, `RequirementServiceError` → 503,
+  `NotImplementedError` from the still-stubbed `engine/` → 501. Blank/empty
+  `description` is rejected at the request-validation layer.
+- **`pipeline/tests/`** — route-level tests for `/health`, `/parse`, `/design`
+  covering all of the above status codes, plus mocked unit tests for the LLM
+  layer's retry/error-handling logic.
+- **`engine/`** — `taxonomy.py` has a real `suggest_prefix_length()` helper;
+  `generator.py`, `validator.py`, `config_gen.py` are still `NotImplementedError`
+  stubs (Nyles).
+- **`dashboard/`** — not yet scaffolded by ProjectAAL. A sample `FullResult`
+  fixture (`dashboard/fixtures/sample_full_result.json`), validated against
+  `shared/schema.py`, is available to build the UI against ahead of `engine/`
+  being real.
+
 ## Team ownership (this is the whole point of the folder layout)
 
 | Folder | Owner | Contains |

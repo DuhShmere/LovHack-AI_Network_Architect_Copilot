@@ -49,6 +49,18 @@ def test_health():
     assert r.json() == {"status": "ok"}
 
 
+@pytest.mark.parametrize("blank_description", ["", "   ", "\n\t"])
+def test_design_rejects_blank_description(blank_description):
+    r = client.post("/design", json={"description": blank_description})
+    assert r.status_code == 422
+
+
+@pytest.mark.parametrize("blank_description", ["", "   ", "\n\t"])
+def test_parse_rejects_blank_description(blank_description):
+    r = client.post("/parse", json={"description": blank_description})
+    assert r.status_code == 422
+
+
 @patch("pipeline.llm_layer.client")
 def test_parse_returns_network_spec_on_success(mock_client):
     mock_client.messages.create.return_value = _fake_llm_response(VALID_SPEC_JSON)

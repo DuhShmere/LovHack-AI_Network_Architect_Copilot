@@ -8,7 +8,7 @@ early development; Samir can build/test everything up to this call.
 """
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from shared.schema import FullResult, NetworkSpec
 from pipeline.llm_layer import (
@@ -25,6 +25,14 @@ router = APIRouter()
 
 class DesignRequest(BaseModel):
     description: str  # plain-English requirements from the user
+
+    @field_validator("description")
+    @classmethod
+    def description_must_not_be_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("description must not be empty")
+        return v
 
 
 @router.post("/parse", response_model=NetworkSpec)
