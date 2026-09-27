@@ -41,6 +41,20 @@ class RequirementParseError(Exception):
     """Raised when a plain-English description can't be parsed into a NetworkSpec."""
 
 
+class RequirementServiceError(Exception):
+    """Raised when the Anthropic API itself fails (auth, rate limit, connection, timeout, server error)."""
+
+
+# Transient failures worth retrying once; auth/bad-request errors won't
+# succeed on a second try, so those fail fast instead.
+_RETRYABLE_API_ERRORS = (
+    anthropic.RateLimitError,
+    anthropic.APIConnectionError,  # also covers APITimeoutError
+    anthropic.InternalServerError,
+    anthropic.OverloadedError,
+)
+
+
 def _extract_json(text: str) -> str:
     """Pull a JSON object out of a model response, tolerating code fences and prose."""
     text = text.strip()
@@ -77,7 +91,11 @@ def parse_requirements(plain_english: str) -> NetworkSpec:
 
     Retries once against the model if the first response can't be parsed
     (malformed JSON, or JSON that doesn't validate against NetworkSpec) before
-    giving up and raising RequirementParseError.
+    giving up and raising RequirementParseError. Transient Anthropic API
+    failures (rate limits, connection issues, server errors) are also
+    retried once and then raised as RequirementServiceError; non-retryable
+    API errors (bad auth, bad request) raise RequirementServiceError
+    immediately.
     """
     last_error: Exception | None = None
     for _ in range(2):
@@ -85,6 +103,15 @@ def parse_requirements(plain_english: str) -> NetworkSpec:
             return _call_model(plain_english)
         except (json.JSONDecodeError, ValidationError, ValueError, IndexError) as e:
             last_error = e
+        except _RETRYABLE_API_ERRORS as e:
+            last_error = e
+        except anthropic.APIError as e:
+            raise RequirementServiceError(f"Anthropic API request failed: {e}") from e
+
+    if isinstance(last_error, _RETRYABLE_API_ERRORS):
+        raise RequirementServiceError(
+            f"Anthropic API unavailable after retrying: {last_error}"
+        ) from last_error
 
     raise RequirementParseError(
         f"Could not extract a valid NetworkSpec after retrying: {last_error}"

@@ -11,7 +11,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from shared.schema import FullResult, NetworkSpec
-from pipeline.llm_layer import parse_requirements, RequirementParseError
+from pipeline.llm_layer import (
+    RequirementParseError,
+    RequirementServiceError,
+    parse_requirements,
+)
 from engine.generator import generate_plan
 from engine.validator import validate_plan
 from engine.config_gen import generate_configs
@@ -31,6 +35,8 @@ def parse_only(req: DesignRequest) -> NetworkSpec:
         return parse_requirements(req.description)
     except RequirementParseError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except RequirementServiceError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 @router.post("/design", response_model=FullResult)
@@ -39,6 +45,8 @@ def design_network(req: DesignRequest) -> FullResult:
         spec = parse_requirements(req.description)
     except RequirementParseError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except RequirementServiceError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
     try:
         plan = generate_plan(spec)

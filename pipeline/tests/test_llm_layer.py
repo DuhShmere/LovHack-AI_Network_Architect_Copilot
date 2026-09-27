@@ -2,9 +2,29 @@
 
 from unittest.mock import MagicMock, patch
 
+import anthropic
+import httpx
 import pytest
 
-from pipeline.llm_layer import RequirementParseError, parse_requirements
+from pipeline.llm_layer import (
+    RequirementParseError,
+    RequirementServiceError,
+    parse_requirements,
+)
+
+_FAKE_REQUEST = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+
+
+def _rate_limit_error() -> anthropic.RateLimitError:
+    return anthropic.RateLimitError(
+        "rate limited", response=httpx.Response(429, request=_FAKE_REQUEST), body=None
+    )
+
+
+def _auth_error() -> anthropic.AuthenticationError:
+    return anthropic.AuthenticationError(
+        "invalid api key", response=httpx.Response(401, request=_FAKE_REQUEST), body=None
+    )
 
 
 def test_parses_basic_office_description():
@@ -70,3 +90,30 @@ def test_raises_requirement_parse_error_after_repeated_failure(mock_client):
     with pytest.raises(RequirementParseError):
         parse_requirements("50-person office")
     assert mock_client.messages.create.call_count == 2
+
+
+@patch("pipeline.llm_layer.client")
+def test_retries_once_after_rate_limit_then_succeeds(mock_client):
+    mock_client.messages.create.side_effect = [
+        _rate_limit_error(),
+        _fake_response(VALID_SPEC_JSON),
+    ]
+    result = parse_requirements("50-person office")
+    assert result.org_name == "Acme Dental"
+    assert mock_client.messages.create.call_count == 2
+
+
+@patch("pipeline.llm_layer.client")
+def test_raises_requirement_service_error_after_repeated_rate_limit(mock_client):
+    mock_client.messages.create.side_effect = [_rate_limit_error(), _rate_limit_error()]
+    with pytest.raises(RequirementServiceError):
+        parse_requirements("50-person office")
+    assert mock_client.messages.create.call_count == 2
+
+
+@patch("pipeline.llm_layer.client")
+def test_raises_requirement_service_error_immediately_on_auth_failure(mock_client):
+    mock_client.messages.create.side_effect = _auth_error()
+    with pytest.raises(RequirementServiceError):
+        parse_requirements("50-person office")
+    assert mock_client.messages.create.call_count == 1
