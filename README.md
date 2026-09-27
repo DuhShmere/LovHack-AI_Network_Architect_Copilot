@@ -17,18 +17,21 @@ Built for LovHack Season 3 (Sept 26 – Oct 4, 2026).
 - **`pipeline/api/routes.py`** — `POST /parse` (LLM extraction only, no
   `engine/` dependency) and `POST /design` (full pipeline) are wired up.
   `RequirementParseError` → 422, `RequirementServiceError` → 503,
-  `NotImplementedError` from the still-stubbed `engine/` → 501. Blank/empty
-  `description` is rejected at the request-validation layer.
-- **`pipeline/tests/`** — route-level tests for `/health`, `/parse`, `/design`
-  covering all of the above status codes, plus mocked unit tests for the LLM
-  layer's retry/error-handling logic.
-- **`engine/`** — `taxonomy.py` has a real `suggest_prefix_length()` helper;
-  `generator.py`, `validator.py`, `config_gen.py` are still `NotImplementedError`
-  stubs (Nyles).
-- **`dashboard/`** — not yet scaffolded by ProjectAAL. A sample `FullResult`
-  fixture (`dashboard/fixtures/sample_full_result.json`), validated against
-  `shared/schema.py`, is available to build the UI against ahead of `engine/`
-  being real.
+  missing API/service keys → 503, other LLM response errors → 502, and blank
+  descriptions are rejected during request validation.
+- **`pipeline/tests/`** — offline route and LLM tests cover `/health`, `/parse`,
+  `/design`, request validation, retries, and HTTP error mapping. The engine and
+  pipeline suites currently contain 71 tests and run without an API key.
+- **`engine/`** — generator, validator, and Cisco-style config generator are
+  implemented. Plans include VLAN/subnet allocations and topology; validation
+  checks addressing, overlap, topology references, and redundancy. Guest Wi-Fi
+  isolation fails closed because `shared/schema.py` does not represent firewall
+  policy. Generated configs are illustrative and omit IP addressing, routing,
+  and firewall rules not represented in the plan.
+- **`dashboard/`** — not yet scaffolded by ProjectAAL. The sample `FullResult`
+  fixture (`dashboard/fixtures/sample_full_result.json`) passes schema parsing,
+  but does not yet match engine validation: subnet capacity and guest isolation
+  fail, and it contains configs for only 2 of its 8 topology nodes.
 
 ## Team ownership (this is the whole point of the folder layout)
 
