@@ -38,6 +38,64 @@ def test_validator_finds_overlapping_subnets():
     assert not report.overall_pass
 
 
+def test_validator_counts_capacity_across_segments():
+    plan = generate_plan(NetworkSpec(
+        org_name="Segmented Office",
+        user_count=50,
+        needs_guest_wifi=True,
+        department_segments=["staff", "iot", "management"],
+    ))
+    subnets = [
+        "10.0.10.0/26",
+        "10.0.20.0/26",
+        "10.0.30.0/27",
+        "10.0.99.0/28",
+    ]
+    plan = plan.model_copy(update={
+        "vlans": [
+            vlan.model_copy(update={"subnet_cidr": subnet})
+            for vlan, subnet in zip(plan.vlans, subnets)
+        ],
+    })
+
+    report = validate_plan(plan)
+
+    capacity_check = next(
+        check for check in report.checks if check.check_name == "subnet_capacity"
+    )
+    assert capacity_check.passed
+    assert "Aggregate VLAN capacity" in capacity_check.detail
+
+
+def test_validator_rejects_insufficient_aggregate_subnet_capacity():
+    plan = generate_plan(NetworkSpec(
+        org_name="Small Pool Office",
+        user_count=50,
+        needs_guest_wifi=True,
+        department_segments=["staff", "iot", "management"],
+    ))
+    subnets = [
+        "10.0.0.0/29",
+        "10.0.0.8/29",
+        "10.0.0.16/29",
+        "10.0.0.24/29",
+    ]
+    plan = plan.model_copy(update={
+        "vlans": [
+            vlan.model_copy(update={"subnet_cidr": subnet})
+            for vlan, subnet in zip(plan.vlans, subnets)
+        ],
+    })
+
+    report = validate_plan(plan)
+
+    capacity_check = next(
+        check for check in report.checks if check.check_name == "subnet_capacity"
+    )
+    assert not capacity_check.passed
+    assert "54 are required" in capacity_check.detail
+
+
 def test_validator_finds_missing_redundant_wan_path():
     plan = generate_plan(NetworkSpec(
         org_name="Resilient Office",

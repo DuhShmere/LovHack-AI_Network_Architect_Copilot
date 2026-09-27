@@ -21,7 +21,7 @@ Built for LovHack Season 3 (Sept 26 – Oct 4, 2026).
   descriptions are rejected during request validation.
 - **`pipeline/tests/`** — offline route and LLM tests cover `/health`, `/parse`,
   `/design`, request validation, retries, and HTTP error mapping. The engine and
-  pipeline suites currently contain 71 tests and run without an API key.
+  pipeline suites currently contain 73 tests and run without an API key.
 - **`engine/`** — generator, validator, and Cisco-style config generator are
   implemented. Plans include VLAN/subnet allocations and topology; validation
   checks addressing, overlap, topology references, and redundancy. Guest Wi-Fi
@@ -30,8 +30,8 @@ Built for LovHack Season 3 (Sept 26 – Oct 4, 2026).
   and firewall rules not represented in the plan.
 - **`dashboard/`** — not yet scaffolded by ProjectAAL. The sample `FullResult`
   fixture (`dashboard/fixtures/sample_full_result.json`) passes schema parsing,
-  but does not yet match engine validation: subnet capacity and guest isolation
-  fail, and it contains configs for only 2 of its 8 topology nodes.
+  but guest isolation cannot be verified from the current schema, and it
+  contains configs for only 2 of its 8 topology nodes.
 
 ## Team ownership (this is the whole point of the folder layout)
 

@@ -36,6 +36,17 @@ def validate_plan(plan: NetworkPlan) -> ValidationReport:
       if left_network.overlaps(right_network):
         overlaps.append(f"{left_vlan.name}/{right_vlan.name}")
 
+  aggregate_usable_addresses = sum(
+    max(network.num_addresses - 2, 0)
+    for _, network in parsed_networks
+  )
+  required_usable_addresses = plan.spec.user_count + len(plan.vlans)
+  capacity_valid = (
+    bool(plan.vlans)
+    and not invalid_subnets
+    and aggregate_usable_addresses >= required_usable_addresses
+  )
+
   checks = [
     ValidationCheck(
       check_name="no_subnet_overlap",
@@ -70,19 +81,15 @@ def validate_plan(plan: NetworkPlan) -> ValidationReport:
     ),
     ValidationCheck(
       check_name="subnet_capacity",
-      passed=bool(plan.vlans) and all(
-        network.num_addresses - 2 >= plan.spec.user_count + 1
-        for _, network in parsed_networks
-      ) and not invalid_subnets,
+      passed=capacity_valid,
       detail=(
-        f"Each VLAN has room for {plan.spec.user_count} users and a gateway."
-        if plan.vlans
-        and not invalid_subnets
-        and all(
-          network.num_addresses - 2 >= plan.spec.user_count + 1
-          for _, network in parsed_networks
+        f"Aggregate VLAN capacity covers {plan.spec.user_count} users and one gateway per VLAN."
+        if capacity_valid
+        else (
+          f"VLANs provide {aggregate_usable_addresses} aggregate usable addresses; "
+          f"at least {required_usable_addresses} are required for {plan.spec.user_count} "
+          "users and one gateway per VLAN."
         )
-        else f"Each VLAN must provide at least {plan.spec.user_count + 1} usable addresses."
       ),
     ),
   ]
