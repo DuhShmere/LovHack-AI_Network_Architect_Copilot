@@ -31,10 +31,16 @@ SUBNET_SIZE_GUIDANCE = [
     (510, 23),
 ]
 
+MAX_FALLBACK_SUBNET_HOSTS = (1 << 16) - 2
+
 
 def suggest_prefix_length(host_count: int) -> int:
     """Return a CIDR prefix length that comfortably fits host_count hosts."""
+    if not 1 <= host_count <= MAX_FALLBACK_SUBNET_HOSTS:
+        raise ValueError(
+            f"host_count must be between 1 and {MAX_FALLBACK_SUBNET_HOSTS} for IPv4 allocation"
+        )
     for max_hosts, prefix in SUBNET_SIZE_GUIDANCE:
         if host_count <= max_hosts:
             return prefix
-    return 16  # fall back to something big for very large orgs
+    return 16
