@@ -8,10 +8,14 @@ early development; Samir can build/test everything up to this call.
 """
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from shared.schema import FullResult, NetworkSpec
-from pipeline.llm_layer import parse_requirements, RequirementParseError
+from pipeline.llm_layer import (
+    RequirementParseError,
+    RequirementServiceError,
+    parse_requirements,
+)
 from engine.generator import generate_plan
 from engine.validator import validate_plan
 from engine.config_gen import generate_configs
@@ -22,6 +26,14 @@ router = APIRouter()
 class DesignRequest(BaseModel):
     description: str  # plain-English requirements from the user
 
+    @field_validator("description")
+    @classmethod
+    def description_must_not_be_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("description must not be empty")
+        return v
+
 
 @router.post("/parse", response_model=NetworkSpec)
 def parse_only(req: DesignRequest) -> NetworkSpec:
@@ -31,6 +43,8 @@ def parse_only(req: DesignRequest) -> NetworkSpec:
         return parse_requirements(req.description)
     except RequirementParseError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except RequirementServiceError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 @router.post("/design", response_model=FullResult)
@@ -39,6 +53,8 @@ def design_network(req: DesignRequest) -> FullResult:
         spec = parse_requirements(req.description)
     except RequirementParseError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except RequirementServiceError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
     try:
         plan = generate_plan(spec)
