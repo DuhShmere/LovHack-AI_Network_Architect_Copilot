@@ -1,6 +1,6 @@
 """Standalone tests for deterministic network-plan validation."""
 
-from shared.schema import NetworkSpec
+from shared.schema import NetworkSpec, TopologyLink, TopologyNode
 from engine.generator import generate_plan
 from engine.validator import validate_plan
 
@@ -54,6 +54,39 @@ def test_validator_finds_missing_redundant_wan_path():
         check for check in report.checks if check.check_name == "redundancy_present"
     )
     assert not redundancy_check.passed
+
+
+def test_validator_accepts_wan_uplinks_connected_to_distinct_routers():
+    plan = generate_plan(NetworkSpec(
+        org_name="Two Uplink Office",
+        user_count=30,
+        redundancy="dual_wan",
+    ))
+    uplink_links = [
+        TopologyLink(source_id="isp-a", target_id="router-primary", link_type="wan"),
+        TopologyLink(
+            source_id="isp-b",
+            target_id="router-secondary",
+            link_type="redundant_wan",
+        ),
+    ]
+    plan = plan.model_copy(update={
+        "nodes": plan.nodes + [
+            TopologyNode(node_id="isp-a", node_type="wan_uplink", label="ISP A"),
+            TopologyNode(node_id="isp-b", node_type="wan_uplink", label="ISP B"),
+        ],
+        "links": [
+            link for link in plan.links
+            if link.link_type not in {"wan", "redundant_wan"}
+        ] + uplink_links,
+    })
+
+    report = validate_plan(plan)
+
+    redundancy_check = next(
+        check for check in report.checks if check.check_name == "redundancy_present"
+    )
+    assert redundancy_check.passed
 
 
 def test_validator_does_not_claim_guest_isolation_without_policy_data():

@@ -133,26 +133,24 @@ def validate_plan(plan: NetworkPlan) -> ValidationReport:
     redundancy_detail = "No redundancy requirement was requested."
   else:
     nodes_by_id = {node.node_id: node for node in plan.nodes}
-    wan_router_ids = {
-      endpoint
-      for link in plan.links
-      if link.link_type == "wan"
-      and nodes_by_id.get(link.source_id) is not None
-      and nodes_by_id.get(link.source_id).node_type == "router"
-      and nodes_by_id.get(link.target_id) is not None
-      and nodes_by_id.get(link.target_id).node_type == "firewall"
-      for endpoint in (link.source_id,)
-    }
-    redundant_wan_router_ids = {
-      endpoint
-      for link in plan.links
-      if link.link_type == "redundant_wan"
-      and nodes_by_id.get(link.source_id) is not None
-      and nodes_by_id.get(link.source_id).node_type == "router"
-      and nodes_by_id.get(link.target_id) is not None
-      and nodes_by_id.get(link.target_id).node_type == "firewall"
-      for endpoint in (link.source_id,)
-    }
+
+    def routers_on_wan_links(link_type):
+      router_ids = set()
+      for link in plan.links:
+        if link.link_type != link_type:
+          continue
+        source = nodes_by_id.get(link.source_id)
+        target = nodes_by_id.get(link.target_id)
+        if source is None or target is None:
+          continue
+        if source.node_type == "router" and target.node_type in {"firewall", "wan_uplink"}:
+          router_ids.add(source.node_id)
+        elif target.node_type == "router" and source.node_type in {"firewall", "wan_uplink"}:
+          router_ids.add(target.node_id)
+      return router_ids
+
+    wan_router_ids = routers_on_wan_links("wan")
+    redundant_wan_router_ids = routers_on_wan_links("redundant_wan")
     dual_wan_present = bool(wan_router_ids and redundant_wan_router_ids) and (
       wan_router_ids.isdisjoint(redundant_wan_router_ids)
     )

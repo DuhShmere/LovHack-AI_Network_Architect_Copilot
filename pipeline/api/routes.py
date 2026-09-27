@@ -12,6 +12,8 @@ from pydantic import BaseModel, field_validator
 
 from shared.schema import FullResult, NetworkSpec
 from pipeline.llm_layer import (
+    LLMResponseError,
+    MissingAPIKeyError,
     RequirementParseError,
     RequirementServiceError,
     parse_requirements,
@@ -43,8 +45,10 @@ def parse_only(req: DesignRequest) -> NetworkSpec:
         return parse_requirements(req.description)
     except RequirementParseError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    except RequirementServiceError as e:
+    except (MissingAPIKeyError, RequirementServiceError) as e:
         raise HTTPException(status_code=503, detail=str(e))
+    except LLMResponseError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 @router.post("/design", response_model=FullResult)
@@ -53,14 +57,20 @@ def design_network(req: DesignRequest) -> FullResult:
         spec = parse_requirements(req.description)
     except RequirementParseError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    except RequirementServiceError as e:
+    except (MissingAPIKeyError, RequirementServiceError) as e:
         raise HTTPException(status_code=503, detail=str(e))
+    except LLMResponseError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
     try:
         plan = generate_plan(spec)
         validation = validate_plan(plan)
         configs = generate_configs(plan) if validation.overall_pass else []
         return FullResult(plan=plan, validation=validation, configs=configs)
+    except MissingAPIKeyError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except LLMResponseError as e:
+        raise HTTPException(status_code=502, detail=str(e))
     except NotImplementedError as e:
         # Expected during early development -- remove once engine/ is wired up.
         raise HTTPException(status_code=501, detail=str(e))
