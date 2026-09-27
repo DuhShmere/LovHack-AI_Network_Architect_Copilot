@@ -1,0 +1,58 @@
+{
+  "plan": {
+    "spec": {
+      "org_name": "Acme Dental Office",
+      "user_count": 50,
+      "needs_guest_wifi": true,
+      "guest_wifi_isolated": true,
+      "department_segments": ["staff", "guest", "iot"],
+      "redundancy": "dual_wan",
+      "preferred_base_cidr": "10.0.0.0/16",
+      "raw_notes": "50-person office, guest wifi isolated, redundant WAN"
+    },
+    "vlans": [
+      { "vlan_id": 10, "name": "staff", "subnet_cidr": "10.0.10.0/26", "purpose": "Staff workstations" },
+      { "vlan_id": 20, "name": "guest", "subnet_cidr": "10.0.20.0/26", "purpose": "Isolated guest wifi" },
+      { "vlan_id": 30, "name": "iot", "subnet_cidr": "10.0.30.0/27", "purpose": "IoT devices" },
+      { "vlan_id": 99, "name": "management", "subnet_cidr": "10.0.99.0/28", "purpose": "Device management" }
+    ],
+    "nodes": [
+      { "node_id": "isp-a", "node_type": "wan_uplink", "label": "ISP Circuit A" },
+      { "node_id": "isp-b", "node_type": "wan_uplink", "label": "ISP Circuit B" },
+      { "node_id": "router1", "node_type": "router", "label": "Edge Router 1" },
+      { "node_id": "router2", "node_type": "router", "label": "Edge Router 2 (redundant)" },
+      { "node_id": "firewall1", "node_type": "firewall", "label": "Perimeter Firewall" },
+      { "node_id": "core1", "node_type": "core_switch", "label": "Core Switch" },
+      { "node_id": "access1", "node_type": "access_switch", "label": "Access Switch - Floor 1" },
+      { "node_id": "ap1", "node_type": "ap", "label": "Wireless AP - Floor 1" }
+    ],
+    "links": [
+      { "source_id": "isp-a", "target_id": "router1", "link_type": "wan" },
+      { "source_id": "isp-b", "target_id": "router2", "link_type": "redundant_wan" },
+      { "source_id": "router1", "target_id": "firewall1", "link_type": "trunk" },
+      { "source_id": "router2", "target_id": "firewall1", "link_type": "trunk" },
+      { "source_id": "firewall1", "target_id": "core1", "link_type": "trunk" },
+      { "source_id": "core1", "target_id": "access1", "link_type": "trunk" },
+      { "source_id": "access1", "target_id": "ap1", "link_type": "access" }
+    ]
+  },
+  "validation": {
+    "overall_pass": true,
+    "checks": [
+      { "check_name": "no_subnet_overlap", "passed": true, "detail": "All 4 VLAN subnets are disjoint." },
+      { "check_name": "valid_ranges", "passed": true, "detail": "All subnets fall within RFC1918 10.0.0.0/8." },
+      { "check_name": "redundancy_present", "passed": true, "detail": "Dual WAN uplinks (isp-a/router1, isp-b/router2) confirmed." },
+      { "check_name": "guest_isolation", "passed": true, "detail": "Guest VLAN 20 has no trunk/link to staff or management VLANs." }
+    ]
+  },
+  "configs": [
+    {
+      "node_id": "core1",
+      "config_text": "hostname CORE1\n!\nvlan 10\n name staff\nvlan 20\n name guest\nvlan 30\n name iot\nvlan 99\n name management\n!\ninterface Vlan10\n ip address 10.0.10.1 255.255.255.192\ninterface Vlan20\n ip address 10.0.20.1 255.255.255.192\ninterface Vlan30\n ip address 10.0.30.1 255.255.255.224\ninterface Vlan99\n ip address 10.0.99.1 255.255.255.240\n!\ninterface GigabitEthernet0/1\n description trunk to access1\n switchport mode trunk\n switchport trunk allowed vlan 10,20,30,99\n"
+    },
+    {
+      "node_id": "access1",
+      "config_text": "hostname ACCESS1\n!\ninterface GigabitEthernet0/1\n description uplink to core1\n switchport mode trunk\n switchport trunk allowed vlan 10,20,30,99\n!\ninterface GigabitEthernet0/2\n description AP1 uplink\n switchport mode trunk\n switchport trunk allowed vlan 10,20\n"
+    }
+  ]
+}

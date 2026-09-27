@@ -10,8 +10,8 @@ early development; Samir can build/test everything up to this call.
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from shared.schema import FullResult
-from pipeline.llm_layer import parse_requirements
+from shared.schema import FullResult, NetworkSpec
+from pipeline.llm_layer import parse_requirements, RequirementParseError
 from engine.generator import generate_plan
 from engine.validator import validate_plan
 from engine.config_gen import generate_configs
@@ -23,10 +23,24 @@ class DesignRequest(BaseModel):
     description: str  # plain-English requirements from the user
 
 
+@router.post("/parse", response_model=NetworkSpec)
+def parse_only(req: DesignRequest) -> NetworkSpec:
+    """LLM-extraction only, no engine/ dependency -- lets the dashboard and
+    tests exercise the real parsing step while engine/ is still stubbed."""
+    try:
+        return parse_requirements(req.description)
+    except RequirementParseError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 @router.post("/design", response_model=FullResult)
 def design_network(req: DesignRequest) -> FullResult:
     try:
         spec = parse_requirements(req.description)
+    except RequirementParseError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    try:
         plan = generate_plan(spec)
         validation = validate_plan(plan)
         configs = generate_configs(plan) if validation.overall_pass else []

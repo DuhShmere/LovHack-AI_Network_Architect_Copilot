@@ -1,17 +1,24 @@
 """
 LLM layer: plain-English requirements -> structured NetworkSpec.
 
-Owner: Samir. Day 2 task. Stub the call to engine.generator until Nyles's
-generate_plan() is ready (Day 3) -- this file should work standalone against
-the Anthropic API without depending on the engine at all.
+Owner: Samir. Day 2 task. Works standalone against the Anthropic API
+without depending on engine/ at all.
 """
 
-import os
 import json
+import os
+
 import anthropic
+from dotenv import load_dotenv
+from pydantic import ValidationError
+
 from shared.schema import NetworkSpec
 
+load_dotenv()
+
 client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+
+MODEL = "claude-sonnet-5"
 
 EXTRACTION_SYSTEM_PROMPT = """\
 You extract structured network requirements from a plain-English description.
@@ -30,21 +37,55 @@ Respond ONLY with a JSON object matching this shape, nothing else:
 """
 
 
-def parse_requirements(plain_english: str) -> NetworkSpec:
-    """
-    TODO (Samir):
-      - Call the Anthropic API with EXTRACTION_SYSTEM_PROMPT.
-      - Parse the JSON response (strip ```json fences defensively).
-      - Validate it against NetworkSpec (pydantic will raise if malformed --
-        catch that and either retry once or surface a clear error).
-    """
+class RequirementParseError(Exception):
+    """Raised when a plain-English description can't be parsed into a NetworkSpec."""
+
+
+def _extract_json(text: str) -> str:
+    """Pull a JSON object out of a model response, tolerating code fences and prose."""
+    text = text.strip()
+    if text.startswith("```"):
+        first_newline = text.find("\n")
+        text = text[first_newline + 1 :] if first_newline != -1 else text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end < start:
+        raise ValueError(f"no JSON object found in model response: {text!r}")
+    return text[start : end + 1]
+
+
+def _call_model(plain_english: str) -> NetworkSpec:
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model=MODEL,
         max_tokens=1000,
         system=EXTRACTION_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": plain_english}],
     )
-    text = response.content[0].text.strip()
-    text = text.removeprefix("```json").removesuffix("```").strip()
-    data = json.loads(text)
+    raw_text = response.content[0].text
+    json_text = _extract_json(raw_text)
+    data = json.loads(json_text)
     return NetworkSpec(**data)
+
+
+def parse_requirements(plain_english: str) -> NetworkSpec:
+    """
+    Parse a plain-English network description into a structured NetworkSpec.
+
+    Retries once against the model if the first response can't be parsed
+    (malformed JSON, or JSON that doesn't validate against NetworkSpec) before
+    giving up and raising RequirementParseError.
+    """
+    last_error: Exception | None = None
+    for _ in range(2):
+        try:
+            return _call_model(plain_english)
+        except (json.JSONDecodeError, ValidationError, ValueError, IndexError) as e:
+            last_error = e
+
+    raise RequirementParseError(
+        f"Could not extract a valid NetworkSpec after retrying: {last_error}"
+    ) from last_error
