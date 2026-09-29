@@ -14,7 +14,7 @@ import ipaddress
 import itertools
 from collections import defaultdict, deque
 
-from shared.schema import NetworkPlan, ValidationReport, ValidationCheck, RedundancyLevel
+from shared.schema import NetworkPlan, ValidationReport, ValidationCheck, RedundancyLevel, VLANAllocation
 from engine.taxonomy import normalize_segment
 
 RFC1918 = [
@@ -47,12 +47,16 @@ def _check(name: str, passed: bool, detail: str) -> ValidationCheck:
     return ValidationCheck(check_name=name, passed=passed, detail=detail)
 
 
-def _parsed_subnets(plan: NetworkPlan) -> dict[int, ipaddress.IPv4Network]:
-    """vlan_id -> network, skipping anything that doesn't parse (valid_ranges reports those)."""
-    result = {}
+def _parsed_subnets(plan: NetworkPlan) -> list[tuple[VLANAllocation, ipaddress.IPv4Network]]:
+    """(vlan, network) pairs, skipping anything that doesn't parse (valid_ranges reports those).
+
+    A list rather than a dict keyed by vlan_id, so duplicate IDs (which
+    valid_vlan_ids reports) can't hide one VLAN's subnet from the other checks.
+    """
+    result = []
     for v in plan.vlans:
         try:
-            result[v.vlan_id] = ipaddress.ip_network(v.subnet_cidr)
+            result.append((v, ipaddress.ip_network(v.subnet_cidr)))
         except ValueError:
             pass
     return result
@@ -106,9 +110,9 @@ def check_valid_ranges(plan: NetworkPlan) -> ValidationCheck:
 def check_no_subnet_overlap(plan: NetworkPlan) -> ValidationCheck:
     subnets = _parsed_subnets(plan)
     clashes = [
-        f"VLAN {a} ({subnets[a]}) overlaps VLAN {b} ({subnets[b]})"
-        for a, b in itertools.combinations(subnets, 2)
-        if subnets[a].overlaps(subnets[b])
+        f"VLAN {a.vlan_id} ({a_net}) overlaps VLAN {b.vlan_id} ({b_net})"
+        for (a, a_net), (b, b_net) in itertools.combinations(subnets, 2)
+        if a_net.overlaps(b_net)
     ]
     if clashes:
         return _check("no_subnet_overlap", False, "; ".join(clashes))
@@ -153,16 +157,15 @@ def check_required_segments_present(plan: NetworkPlan) -> ValidationCheck:
 def check_subnet_capacity(plan: NetworkPlan) -> ValidationCheck:
     """User-facing VLANs must have room for every user plus a gateway."""
     users = plan.spec.user_count
-    subnets = _parsed_subnets(plan)
     problems = []
     checked = []
-    for v in plan.vlans:
-        if v.name not in ("staff", "guest") or v.vlan_id not in subnets:
+    for v, net in _parsed_subnets(plan):
+        if v.name not in ("staff", "guest"):
             continue
-        usable = subnets[v.vlan_id].num_addresses - 2 - 1  # network, broadcast, gateway
-        checked.append(f"{v.name} {subnets[v.vlan_id]} ({usable} hosts)")
+        usable = net.num_addresses - 2 - 1  # network, broadcast, gateway
+        checked.append(f"{v.name} {net} ({usable} hosts)")
         if usable < users:
-            problems.append(f"{v.name} {subnets[v.vlan_id]} has {usable} usable hosts for {users} users")
+            problems.append(f"{v.name} {net} has {usable} usable hosts for {users} users")
     if problems:
         return _check("subnet_capacity", False, "; ".join(problems))
     if not checked:
@@ -258,12 +261,12 @@ def check_guest_isolation(plan: NetworkPlan) -> ValidationCheck:
         return _check("guest_isolation", False, "Guest isolation requested but there is no guest VLAN.")
 
     subnets = _parsed_subnets(plan)
-    guest_net = subnets.get(guest.vlan_id)
+    guest_net = next((net for v, net in subnets if v is guest), None)
     if guest_net is None:
         return _check("guest_isolation", False, f"Guest VLAN {guest.vlan_id} has an invalid subnet.")
     shared = [
-        f"VLAN {vid}" for vid, net in subnets.items()
-        if vid != guest.vlan_id and net.overlaps(guest_net)
+        f"VLAN {v.vlan_id}" for v, net in subnets
+        if v is not guest and net.overlaps(guest_net)
     ]
     if shared:
         return _check("guest_isolation", False, f"Guest subnet {guest_net} overlaps {', '.join(shared)}.")
