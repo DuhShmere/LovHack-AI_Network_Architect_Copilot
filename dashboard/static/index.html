@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Network Architect Copilot</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>AI Network Architect Copilot</h1>
+    <p class="subtitle">Describe your network in plain English. Get a validated topology, VLAN plan, and device configs.</p>
+  </header>
+
+  <main>
+    <section id="input-panel">
+      <form id="design-form">
+        <textarea
+          id="description"
+          placeholder="e.g. 50-person office, guest wifi isolated, redundant WAN"
+          rows="3"
+        ></textarea>
+        <div class="form-row">
+          <button type="submit" id="submit-btn">Design network</button>
+          <span id="status" class="status" hidden></span>
+        </div>
+      </form>
+      <div id="error-banner" class="error-banner" hidden></div>
+    </section>
+
+    <section id="results" hidden>
+      <div class="panel" id="validation-panel">
+        <h2>Validation report <span id="overall-pass-badge" class="badge"></span></h2>
+        <ul id="validation-list" class="validation-list"></ul>
+      </div>
+
+      <div class="panel" id="topology-panel">
+        <h2>Topology</h2>
+        <div id="topology-svg-container"></div>
+      </div>
+
+      <div class="panel" id="vlan-panel">
+        <h2>VLAN / IP allocation</h2>
+        <table id="vlan-table">
+          <thead>
+            <tr><th>VLAN</th><th>Name</th><th>Subnet</th><th>Purpose</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="panel" id="configs-panel">
+        <h2>Device configs</h2>
+        <div id="configs-list" class="configs-list"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
