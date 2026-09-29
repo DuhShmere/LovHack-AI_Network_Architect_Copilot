@@ -79,8 +79,12 @@ def _call_model(plain_english: str) -> NetworkSpec:
         system=EXTRACTION_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": plain_english}],
     )
-    raw_text = response.content[0].text
-    json_text = _extract_json(raw_text)
+    # content[0] isn't always the text block -- extended thinking, when the
+    # model uses it, puts a ThinkingBlock first.
+    text_block = next((block for block in response.content if block.type == "text"), None)
+    if text_block is None:
+        raise ValueError("model response contained no text block")
+    json_text = _extract_json(text_block.text)
     data = json.loads(json_text)
     return NetworkSpec(**data)
 
