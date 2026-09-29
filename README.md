@@ -17,18 +17,28 @@ Built for LovHack Season 3 (Sept 26 – Oct 4, 2026).
 - **`pipeline/api/routes.py`** — `POST /parse` (LLM extraction only, no
   `engine/` dependency) and `POST /design` (full pipeline) are wired up.
   `RequirementParseError` → 422, `RequirementServiceError` → 503,
-  `NotImplementedError` from the still-stubbed `engine/` → 501. Blank/empty
-  `description` is rejected at the request-validation layer.
+  `engine.generator.PlanGenerationError` (bad CIDR, 0 users, etc.) → 422.
+  Blank/empty `description` is rejected at the request-validation layer.
+- **`engine/`** — done (Nyles). `generator.py` allocates non-overlapping VLAN
+  subnets and scales the topology to `user_count` (1 access switch per 48
+  users, 1 AP per 25; redundant WAN/core switches when requested).
+  `validator.py` runs 8 concrete checks (valid ranges, no subnet overlap,
+  valid VLAN IDs, required segments present, subnet capacity, topology
+  connectivity, redundancy present, guest isolation). `config_gen.py` emits
+  Cisco IOS-style config per device (skips ISP `wan_uplink` nodes, and skips
+  all configs if validation fails).
+- **`/design` is fully live end-to-end** — plain English in, a real validated
+  `FullResult` out.
 - **`pipeline/tests/`** — route-level tests for `/health`, `/parse`, `/design`
-  covering all of the above status codes, plus mocked unit tests for the LLM
-  layer's retry/error-handling logic.
-- **`engine/`** — `taxonomy.py` has a real `suggest_prefix_length()` helper;
-  `generator.py`, `validator.py`, `config_gen.py` are still `NotImplementedError`
-  stubs (Nyles).
-- **`dashboard/`** — not yet scaffolded by ProjectAAL. A sample `FullResult`
-  fixture (`dashboard/fixtures/sample_full_result.json`), validated against
-  `shared/schema.py`, is available to build the UI against ahead of `engine/`
-  being real.
+  (including a real end-to-end run against the live engine, mocking only the
+  LLM), plus mocked unit tests for the LLM layer's retry/error-handling logic
+  and JSON extraction (including a regression test for a real bug: extended
+  thinking puts a `ThinkingBlock` before the text block in the API response).
+- **`dashboard/`** — not yet scaffolded by ProjectAAL. Build against the real
+  `/design` endpoint now that `engine/` is live (a `dashboard/fixtures/sample_full_result.json`
+  fixture is still there if useful, but it predates the real engine's output —
+  e.g. it has 4 validation checks and a `/28` management subnet; the real
+  engine produces 8 checks and a `/27`).
 
 ## Team ownership (this is the whole point of the folder layout)
 
