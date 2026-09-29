@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 from shared.schema import NetworkPlan, RedundancyLevel, TopologyLink
 from engine.taxonomy import normalize_segment
+from engine.validator import node_ids_of_type
 
 
 class SabotageError(ValueError):
@@ -75,10 +76,6 @@ def _requested_segments(plan):
     if spec.needs_guest_wifi:
         names.append("guest")
     return [n for n in names if n and _has(plan, n)]
-
-
-def _node_ids(plan, node_type):
-    return [n.node_id for n in plan.nodes if n.node_type == node_type]
 
 
 # ---------------------------------------------------------------------------
@@ -139,8 +136,8 @@ def _missing_segment(plan):
 
 
 def _orphaned_switch(plan):
-    access = _node_ids(plan, "access_switch")[-1]
-    upstream = set(_node_ids(plan, "core_switch"))
+    access = node_ids_of_type(plan, "access_switch")[-1]
+    upstream = set(node_ids_of_type(plan, "core_switch"))
     before = len(plan.links)
     plan.links = [
         l for l in plan.links
@@ -164,7 +161,7 @@ def _missing_backup_wan(plan):
 
 
 def _firewall_bypass(plan):
-    router, core = _node_ids(plan, "router")[0], _node_ids(plan, "core_switch")[0]
+    router, core = node_ids_of_type(plan, "router")[0], node_ids_of_type(plan, "core_switch")[0]
     plan.links.append(TopologyLink(source_id=router, target_id=core, link_type="trunk"))
     return f"Cabled {router} directly to {core}, giving LAN traffic a path around the firewall."
 
@@ -192,7 +189,7 @@ _SABOTAGES: dict[str, _Sabotage] = {
     ),
     "orphaned_switch": _Sabotage(
         "Unplug an access switch", "topology_connected",
-        lambda p: bool(_node_ids(p, "access_switch")) and bool(_node_ids(p, "core_switch")),
+        lambda p: bool(node_ids_of_type(p, "access_switch")) and bool(node_ids_of_type(p, "core_switch")),
         _orphaned_switch,
     ),
     "missing_backup_wan": _Sabotage(
@@ -204,7 +201,7 @@ _SABOTAGES: dict[str, _Sabotage] = {
     "firewall_bypass": _Sabotage(
         "Cable around the firewall", "guest_isolation",
         lambda p: p.spec.guest_wifi_isolated
-        and bool(_node_ids(p, "router")) and bool(_node_ids(p, "core_switch")),
+        and bool(node_ids_of_type(p, "router")) and bool(node_ids_of_type(p, "core_switch")),
         _firewall_bypass,
     ),
 }
