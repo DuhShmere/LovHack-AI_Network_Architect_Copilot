@@ -280,6 +280,6 @@ def check_guest_isolation(plan: NetworkPlan) -> ValidationCheck:
         )
     return _check(
         "guest_isolation", True,
-        f"Guest VLAN {guest.vlan_id} ({guest_net}) is its own subnet and all LAN traffic "
-        f"passes {', '.join(sorted(firewalls))}, where the isolation policy is enforced.",
+        f"Guest VLAN {guest.vlan_id} ({guest_net}) is its own subnet and all WAN-bound traffic "
+        f"passes {', '.join(sorted(firewalls))} -- nothing bypasses it.",
     )
