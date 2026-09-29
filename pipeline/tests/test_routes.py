@@ -33,7 +33,7 @@ VALID_SPEC_JSON = """{
 
 def _fake_llm_response(text: str) -> MagicMock:
     response = MagicMock()
-    response.content = [MagicMock(text=text)]
+    response.content = [MagicMock(type="text", text=text)]
     return response
 
 
@@ -98,12 +98,25 @@ def test_design_returns_503_when_llm_service_fails(mock_client):
 
 
 @patch("pipeline.llm_layer.client")
-def test_design_returns_501_while_engine_is_stubbed(mock_client):
-    """engine/generator.py's generate_plan() genuinely raises NotImplementedError
-    right now -- this should surface as 501, not an unhandled 500."""
+def test_design_returns_real_result_end_to_end(mock_client):
+    """Only the LLM is mocked here -- generate_plan/validate_plan/generate_configs
+    are the real engine/ implementations."""
     mock_client.messages.create.return_value = _fake_llm_response(VALID_SPEC_JSON)
     r = client.post("/design", json={"description": "50-person office"})
-    assert r.status_code == 501
+    assert r.status_code == 200
+    body = r.json()
+    assert body["validation"]["overall_pass"] is True
+    assert len(body["configs"]) > 0
+
+
+@patch("pipeline.llm_layer.client")
+def test_design_returns_422_on_plan_generation_error(mock_client):
+    """engine.generator.PlanGenerationError (e.g. user_count < 1) should
+    surface as 422, not an unhandled 500."""
+    invalid_spec_json = VALID_SPEC_JSON.replace('"user_count": 50', '"user_count": 0')
+    mock_client.messages.create.return_value = _fake_llm_response(invalid_spec_json)
+    r = client.post("/design", json={"description": "empty office"})
+    assert r.status_code == 422
 
 
 _FAKE_PLAN = NetworkPlan(

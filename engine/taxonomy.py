@@ -10,6 +10,8 @@ This is deliberately separate from shared/schema.py: schema.py is the
 given user count, etc) that only the engine needs internally.
 """
 
+import re
+
 # Example starting point -- replace/expand with real taxonomy.
 
 STANDARD_SEGMENTS = [
@@ -21,6 +23,19 @@ STANDARD_SEGMENTS = [
     "management",
 ]
 
+# Well-known segments -> (VLAN ID, purpose). Anything the LLM extracts that
+# isn't in here (e.g. "admin", "finance") gets a VLAN from CUSTOM_VLAN_START.
+SEGMENT_CATALOG = {
+    "staff": (10, "Staff workstations"),
+    "guest": (20, "Guest wifi"),
+    "iot": (30, "IoT devices"),
+    "voip": (40, "VoIP phones"),
+    "servers": (50, "On-prem servers"),
+    "management": (99, "Device management"),
+}
+CUSTOM_VLAN_START = 100
+CUSTOM_VLAN_STEP = 10
+
 # Rough subnet sizing guidance: user_count -> suggested host bits.
 # e.g. up to 30 users fits a /27 (30 usable hosts).
 SUBNET_SIZE_GUIDANCE = [
@@ -31,10 +46,22 @@ SUBNET_SIZE_GUIDANCE = [
     (510, 23),
 ]
 
+# Topology scaling: one 48-port access switch per this many users, one AP
+# per this many wireless clients.
+USERS_PER_ACCESS_SWITCH = 48
+CLIENTS_PER_AP = 25
+
 
 def suggest_prefix_length(host_count: int) -> int:
     """Return a CIDR prefix length that comfortably fits host_count hosts."""
     for max_hosts, prefix in SUBNET_SIZE_GUIDANCE:
         if host_count <= max_hosts:
             return prefix
-    return 16  # fall back to something big for very large orgs
+    # Beyond the table: smallest prefix whose usable hosts (2^bits - 2) fit.
+    host_bits = (host_count + 1).bit_length()
+    return 32 - host_bits
+
+
+def normalize_segment(name: str) -> str:
+    """'Front Desk ' -> 'front-desk', so LLM output maps to stable VLAN names."""
+    return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")

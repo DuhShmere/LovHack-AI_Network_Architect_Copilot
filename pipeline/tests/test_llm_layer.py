@@ -1,5 +1,6 @@
 """Samir: tests for the LLM extraction layer against varied plain-English inputs."""
 
+import os
 from unittest.mock import MagicMock, patch
 
 import anthropic
@@ -27,6 +28,9 @@ def _auth_error() -> anthropic.AuthenticationError:
     )
 
 
+@pytest.mark.skipif(
+    not os.environ.get("ANTHROPIC_API_KEY"), reason="requires a live ANTHROPIC_API_KEY"
+)
 def test_parses_basic_office_description():
     result = parse_requirements(
         "50-person office, guest wifi isolated, redundant WAN"
@@ -50,7 +54,7 @@ VALID_SPEC_JSON = """{
 
 def _fake_response(text: str) -> MagicMock:
     response = MagicMock()
-    response.content = [MagicMock(text=text)]
+    response.content = [MagicMock(type="text", text=text)]
     return response
 
 
@@ -62,6 +66,19 @@ def test_strips_json_code_fence(mock_client):
     result = parse_requirements("50-person office")
     assert result.org_name == "Acme Dental"
     mock_client.messages.create.assert_called_once()
+
+
+@patch("pipeline.llm_layer.client")
+def test_finds_text_block_after_a_thinking_block(mock_client):
+    """Extended thinking puts a ThinkingBlock (no .text) before the text block."""
+    response = MagicMock()
+    thinking_block = MagicMock(type="thinking")
+    del thinking_block.text  # ThinkingBlock has no .text attribute
+    response.content = [thinking_block, MagicMock(type="text", text=VALID_SPEC_JSON)]
+    mock_client.messages.create.return_value = response
+
+    result = parse_requirements("50-person office")
+    assert result.org_name == "Acme Dental"
 
 
 @patch("pipeline.llm_layer.client")

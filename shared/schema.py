@@ -69,7 +69,7 @@ class VLANAllocation(BaseModel):
 
 class TopologyNode(BaseModel):
     node_id: str
-    node_type: str  # "router" | "core_switch" | "access_switch" | "firewall" | "ap"
+    node_type: str  # "router" | "core_switch" | "access_switch" | "firewall" | "ap" | "wan_uplink"
     label: str
 
 
