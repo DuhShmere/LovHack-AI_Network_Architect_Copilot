@@ -16,6 +16,11 @@ const submitBtn = document.getElementById("submit-btn");
 const statusEl = document.getElementById("status");
 const errorBanner = document.getElementById("error-banner");
 const resultsSection = document.getElementById("results");
+const demoPanel = document.getElementById("demo-panel");
+const demoButtons = document.getElementById("demo-buttons");
+const whatChangedBanner = document.getElementById("what-changed-banner");
+
+let originalResult = null; // the last successful /design response ({plan, validation, configs})
 
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -73,8 +78,10 @@ form.addEventListener("submit", async (e) => {
       return;
     }
 
+    originalResult = body;
     renderResult(body);
     resultsSection.hidden = false;
+    loadSabotages(body.plan);
   } catch (err) {
     showError(`Request failed: ${err.message}`);
   } finally {
@@ -82,14 +89,14 @@ form.addEventListener("submit", async (e) => {
   }
 });
 
-function renderResult(result) {
-  renderValidation(result.validation);
+function renderResult(result, highlightCheck) {
+  renderValidation(result.validation, highlightCheck);
   renderTopology(result.plan.nodes, result.plan.links);
   renderVlans(result.plan.vlans);
-  renderConfigs(result.configs);
+  renderConfigs(result.configs || []);
 }
 
-function renderValidation(validation) {
+function renderValidation(validation, highlightCheck) {
   const badge = document.getElementById("overall-pass-badge");
   badge.textContent = validation.overall_pass ? "PASS" : "FAIL";
   badge.className = `badge ${validation.overall_pass ? "pass" : "fail"}`;
@@ -98,6 +105,7 @@ function renderValidation(validation) {
   list.innerHTML = "";
   for (const check of validation.checks) {
     const li = document.createElement("li");
+    if (check.check_name === highlightCheck) li.className = "just-broken";
     const icon = document.createElement("span");
     icon.className = `check-icon ${check.passed ? "pass" : "fail"}`;
     icon.textContent = check.passed ? "✓" : "✗";
@@ -107,6 +115,80 @@ function renderValidation(validation) {
     li.appendChild(text);
     list.appendChild(li);
   }
+}
+
+// --- Break it (demo) -------------------------------------------------------
+
+async function loadSabotages(plan) {
+  demoPanel.hidden = true;
+  whatChangedBanner.hidden = true;
+  try {
+    const res = await fetch("/demo/sabotages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan }),
+    });
+    if (!res.ok) return;
+    const sabotages = await res.json();
+    if (sabotages.length === 0) return;
+
+    demoButtons.innerHTML = "";
+    for (const s of sabotages) {
+      const btn = document.createElement("button");
+      btn.textContent = s.label;
+      btn.addEventListener("click", () => breakPlan(s.key));
+      demoButtons.appendChild(btn);
+    }
+    demoPanel.hidden = false;
+  } catch {
+    // Demo panel is optional; silently skip it if this call fails.
+  }
+}
+
+async function breakPlan(key) {
+  const buttons = demoButtons.querySelectorAll("button");
+  buttons.forEach((b) => (b.disabled = true));
+  try {
+    const res = await fetch("/demo/break", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan: originalResult.plan, sabotage: key }),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      showError(`(${res.status}) ${formatDetail(body.detail)}`);
+      return;
+    }
+
+    renderResult({ plan: body.plan, validation: body.validation, configs: [] }, findTargetCheck(body.validation));
+    showWhatChanged(body.what_changed);
+  } catch (err) {
+    showError(`Request failed: ${err.message}`);
+  } finally {
+    buttons.forEach((b) => (b.disabled = false));
+  }
+}
+
+function findTargetCheck(validation) {
+  const failed = validation.checks.find((c) => !c.passed);
+  return failed ? failed.check_name : null;
+}
+
+function showWhatChanged(whatChanged) {
+  whatChangedBanner.hidden = false;
+  whatChangedBanner.innerHTML = "";
+  const text = document.createElement("span");
+  text.textContent = `\u{1F528} ${whatChanged}`;
+  const restoreBtn = document.createElement("button");
+  restoreBtn.textContent = "Restore original design";
+  restoreBtn.addEventListener("click", restoreOriginal);
+  whatChangedBanner.appendChild(text);
+  whatChangedBanner.appendChild(restoreBtn);
+}
+
+function restoreOriginal() {
+  whatChangedBanner.hidden = true;
+  renderResult(originalResult);
 }
 
 function renderVlans(vlans) {
