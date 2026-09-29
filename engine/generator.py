@@ -8,7 +8,6 @@ function by end of Day 3).
 
 import ipaddress
 import math
-import re
 
 from shared.schema import (
     NetworkSpec,
@@ -24,6 +23,7 @@ from engine.taxonomy import (
     CUSTOM_VLAN_STEP,
     USERS_PER_ACCESS_SWITCH,
     CLIENTS_PER_AP,
+    normalize_segment,
     suggest_prefix_length,
 )
 
@@ -49,14 +49,10 @@ def generate_plan(spec: NetworkSpec) -> NetworkPlan:
 # Segments / VLANs
 # ---------------------------------------------------------------------------
 
-def _normalize_segment(name: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
-
-
 def _resolve_segments(spec: NetworkSpec) -> list[str]:
     """Deduped segment names: always staff + management, guest if asked for."""
     names = ["staff"]
-    names += [_normalize_segment(s) for s in spec.department_segments]
+    names += [normalize_segment(s) for s in spec.department_segments]
     if spec.needs_guest_wifi:
         names.append("guest")
     names.append("management")
@@ -69,9 +65,9 @@ def _segment_host_count(name: str, spec: NetworkSpec, device_count: int) -> int:
     if name == "management":
         return device_count * 2  # room to grow the device count
     if name == "iot":
-        return max(30, spec.user_count // 2)
+        return max(29, spec.user_count // 2)  # floor: a /27 incl. gateway
     if name == "servers":
-        return 30
+        return 29
     # staff, guest, voip and custom departments: size for every user.
     return spec.user_count
 
@@ -97,7 +93,8 @@ def _allocate_vlans(
         else:
             vlan_id, purpose = next_custom, f"{name.replace('-', ' ').title()} department"
             next_custom += CUSTOM_VLAN_STEP
-        prefix = suggest_prefix_length(_segment_host_count(name, spec, device_count))
+        # +1 so the gateway address fits alongside the hosts.
+        prefix = suggest_prefix_length(_segment_host_count(name, spec, device_count) + 1)
         wanted.append((vlan_id, name, purpose, prefix))
 
     subnets = _vlan_aligned_subnets(base, wanted) or _packed_subnets(base, wanted)

@@ -10,6 +10,8 @@ This is deliberately separate from shared/schema.py: schema.py is the
 given user count, etc) that only the engine needs internally.
 """
 
+import re
+
 # Example starting point -- replace/expand with real taxonomy.
 
 STANDARD_SEGMENTS = [
@@ -58,3 +60,8 @@ def suggest_prefix_length(host_count: int) -> int:
     # Beyond the table: smallest prefix whose usable hosts (2^bits - 2) fit.
     host_bits = (host_count + 1).bit_length()
     return 32 - host_bits
+
+
+def normalize_segment(name: str) -> str:
+    """'Front Desk ' -> 'front-desk', so LLM output maps to stable VLAN names."""
+    return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
