@@ -24,7 +24,7 @@ VALID_SPEC_JSON = """{
   "user_count": 50,
   "needs_guest_wifi": true,
   "guest_wifi_isolated": true,
-  "department_segments": ["staff", "guest"],
+  "department_segments": ["staff", "guest", "voip"],
   "redundancy": "dual_wan",
   "preferred_base_cidr": null,
   "raw_notes": null
@@ -167,3 +167,48 @@ def test_design_skips_config_generation_when_validation_fails(
     assert r.json()["validation"]["overall_pass"] is False
     assert r.json()["configs"] == []
     mock_generate_configs.assert_not_called()
+
+
+def _real_plan() -> dict:
+    """A real generate_plan() output (dual WAN, isolated guest) via the mocked LLM."""
+    with patch("pipeline.llm_layer.client") as mock_client:
+        mock_client.messages.create.return_value = _fake_llm_response(VALID_SPEC_JSON)
+        r = client.post("/design", json={"description": "50-person office"})
+    assert r.status_code == 200
+    return r.json()["plan"]
+
+
+def test_demo_sabotages_lists_all_applicable_sabotages():
+    plan = _real_plan()
+    r = client.post("/demo/sabotages", json={"plan": plan})
+    assert r.status_code == 200
+    sabotages = r.json()
+    assert len(sabotages) == 8
+    assert {s["key"] for s in sabotages} == {
+        "overlapping_subnets", "public_subnet", "undersized_subnet",
+        "duplicate_vlan_id", "missing_segment", "orphaned_switch",
+        "missing_backup_wan", "firewall_bypass",
+    }
+
+
+def test_demo_break_flips_only_its_target_check():
+    plan = _real_plan()
+    r = client.post("/demo/break", json={"plan": plan, "sabotage": "overlapping_subnets"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["what_changed"]
+    failed = {c["check_name"] for c in body["validation"]["checks"] if not c["passed"]}
+    assert failed == {"no_subnet_overlap"}
+
+
+def test_demo_break_returns_422_for_unknown_sabotage():
+    plan = _real_plan()
+    r = client.post("/demo/break", json={"plan": plan, "sabotage": "not_a_real_key"})
+    assert r.status_code == 422
+
+
+def test_demo_break_returns_422_for_inapplicable_sabotage():
+    plan = _real_plan()
+    plan["links"] = [l for l in plan["links"] if l["link_type"] != "redundant_wan"]
+    r = client.post("/demo/break", json={"plan": plan, "sabotage": "missing_backup_wan"})
+    assert r.status_code == 422
