@@ -98,7 +98,8 @@ def _overlapping_subnets(plan):
 def _public_subnet(plan):
     staff = _vlan(plan, "staff")
     old = ipaddress.ip_network(staff.subnet_cidr)
-    staff.subnet_cidr = f"8.8.8.0/{max(old.prefixlen, 24)}"
+    new = ipaddress.ip_network(("8.8.0.0", old.prefixlen), strict=False)
+    staff.subnet_cidr = str(new)
     return f"Changed the staff subnet from {old} to {staff.subnet_cidr}, a public address range."
 
 
@@ -122,12 +123,16 @@ def _duplicate_vlan_id(plan):
     return f"Renumbered the management VLAN from {old} to {staff.vlan_id}, the same ID as staff."
 
 
-def _missing_segment(plan):
+def _dispensable_segment(plan):
+    # Only a secondary (non-staff, non-guest) segment can be dropped cleanly:
+    # dropping staff also trips subnet_capacity, and dropping guest also
+    # trips guest_isolation (if isolation was requested).
     requested = _requested_segments(plan)
-    # Prefer a secondary segment: dropping staff hits capacity too, and
-    # dropping guest drags guest_isolation in.
-    victim = next((n for n in requested if n not in ("staff", "guest")), None)
-    victim = victim or next((n for n in requested if n != "guest"), requested[0])
+    return next((n for n in requested if n not in ("staff", "guest")), None)
+
+
+def _missing_segment(plan):
+    victim = _dispensable_segment(plan)
     dropped = _vlan(plan, victim)
     plan.vlans.remove(dropped)
     return f"Deleted the {victim} VLAN {dropped.vlan_id} that the requirements asked for."
@@ -183,7 +188,7 @@ _SABOTAGES: dict[str, _Sabotage] = {
     ),
     "missing_segment": _Sabotage(
         "Forget a requested segment", "required_segments_present",
-        lambda p: bool(_requested_segments(p)), _missing_segment,
+        lambda p: _dispensable_segment(p) is not None, _missing_segment,
     ),
     "orphaned_switch": _Sabotage(
         "Unplug an access switch", "topology_connected",

@@ -24,7 +24,7 @@ VALID_SPEC_JSON = """{
   "user_count": 50,
   "needs_guest_wifi": true,
   "guest_wifi_isolated": true,
-  "department_segments": ["staff", "guest"],
+  "department_segments": ["staff", "guest", "voip"],
   "redundancy": "dual_wan",
   "preferred_base_cidr": null,
   "raw_notes": null
