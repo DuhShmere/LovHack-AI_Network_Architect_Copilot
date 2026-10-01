@@ -61,3 +61,8 @@ def test_diff_reports_spec_vlan_and_device_changes():
     assert any(c.startswith("VLAN 10 'staff' readdressed") for c in changes)
     assert "Core switches: 2 -> 1" in changes
     assert any(c.startswith("Access switches: 3 -> ") for c in changes)
+
+
+def test_diff_keeps_acronyms_in_device_names():
+    changes = diff_plans(_plan(), _plan(redundancy=RedundancyLevel.none))
+    assert "ISP circuits: 2 -> 1" in changes

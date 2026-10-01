@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=10" />
+  <link rel="stylesheet" href="style.css?v=11" />
 </head>
 <body>
   <div class="topbar">
@@ -24,10 +24,13 @@
         <span>Network Architect <em>Copilot</em></span>
       </a>
       <div class="nav-links">
+        <a href="#requirements-section">Requirements</a>
         <a href="#validation-section">Validation</a>
         <a href="#topology-section">Topology</a>
-        <a href="#vlan-section">Addressing</a>
+        <a href="#simulate-section">Simulate</a>
+        <a href="#bom-section">Cost</a>
         <a href="#configs-section">Configs</a>
+        <a href="#ask-section">Ask</a>
       </div>
       <a class="pill-btn nav-cta" href="#top">Design a network</a>
     </div>
@@ -53,8 +56,8 @@
       <h1>Plain English in.<br />A proven network design out.</h1>
       <p class="hero-sub">
         Describe the network you need. We generate the topology, VLAN plan, and Cisco-style
-        configs &mdash; then run eight deterministic checks to prove the design is actually correct,
-        not just plausible.
+        configs &mdash; then run deterministic checks on the design <em>and</em> the configs, and
+        simulate traffic and failures, to prove it's actually correct, not just plausible.
       </p>
 
       <form id="design-form" class="hero-form">
@@ -73,6 +76,35 @@
   </header>
 
   <main id="results" hidden>
+    <section class="band band-gray" id="requirements-section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>What we understood</h2>
+          <p class="section-sub">The requirements the design was built from. Check the assumptions &mdash; then change anything in plain English.</p>
+        </div>
+        <div class="card">
+          <dl id="spec-summary" class="spec-summary"></dl>
+          <div id="assumptions-block" class="assumptions" hidden>
+            <h3>Assumptions</h3>
+            <ul id="assumptions-list"></ul>
+          </div>
+          <div id="notes-block" class="assumptions" hidden>
+            <h3>Notes we couldn't turn into design</h3>
+            <p id="notes-text"></p>
+          </div>
+          <form id="refine-form" class="inline-form">
+            <input id="refine-input" type="text" placeholder="e.g. make it 150 users and add a VoIP VLAN" aria-label="Change the design" />
+            <button type="submit" id="refine-btn" class="pill-btn">Update design</button>
+          </form>
+          <div id="refine-status" class="status" hidden></div>
+        </div>
+        <div id="changes-banner" class="changes-banner" hidden>
+          <h3>What changed</h3>
+          <ul id="changes-list"></ul>
+        </div>
+      </div>
+    </section>
+
     <section class="band band-white" id="validation-section">
       <div class="wrap">
         <div class="section-head">
@@ -109,7 +141,29 @@
       </div>
     </section>
 
-    <section class="band band-gray" id="vlan-section">
+    <section class="band band-gray" id="simulate-section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Simulate <span id="resilience-badge" class="badge"></span></h2>
+          <p class="section-sub">Traffic walked hop by hop through the generated configs &mdash; ACLs, routes, HSRP, NAT and the return path.</p>
+        </div>
+        <p id="resilience-summary" class="sim-summary"></p>
+        <div class="card">
+          <h3 class="card-title">Fail devices</h3>
+          <p class="card-sub">Click devices to take them down and watch traffic reroute (or not).</p>
+          <div id="failure-buttons" class="chip-row"></div>
+          <p id="simulation-summary" class="sim-summary"></p>
+        </div>
+        <div class="card matrix-card">
+          <h3 class="card-title">Reachability</h3>
+          <p class="card-sub">Rows are where traffic starts, columns where it's going. Click a cell to trace its path on the topology.</p>
+          <div class="table-scroll"><table id="reachability-matrix" class="matrix"></table></div>
+          <p id="flow-detail" class="flow-detail" hidden></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="band band-white" id="vlan-section">
       <div class="wrap">
         <div class="section-head">
           <h2>VLAN &amp; IP allocation</h2>
@@ -126,13 +180,53 @@
       </div>
     </section>
 
+    <section class="band band-gray" id="bom-section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Bill of materials</h2>
+          <p class="section-sub">What to buy for this design, with budgetary pricing.</p>
+        </div>
+        <div class="card table-card">
+          <table id="bom-table">
+            <thead>
+              <tr><th>Item</th><th>Qty</th><th class="num">Unit</th><th class="num">Subtotal</th></tr>
+            </thead>
+            <tbody></tbody>
+            <tfoot></tfoot>
+          </table>
+        </div>
+        <ul id="bom-notes" class="fine-print"></ul>
+      </div>
+    </section>
+
     <section class="band band-white" id="configs-section">
       <div class="wrap">
         <div class="section-head">
           <h2>Device configs</h2>
           <p class="section-sub">Cisco IOS-style config for every device you own &mdash; only generated when validation passes.</p>
         </div>
+        <div class="diagram-actions configs-actions">
+          <button type="button" id="download-all-btn" class="outline-btn" hidden>Download all configs (.zip)</button>
+        </div>
         <div id="configs-list" class="configs-grid"></div>
+      </div>
+    </section>
+
+    <section class="band band-gray" id="ask-section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Ask about this design</h2>
+          <p class="section-sub">Answers come from this design's plan, validation report and configs &mdash; not general guesses.</p>
+        </div>
+        <div class="card">
+          <div id="ask-suggestions" class="chip-row"></div>
+          <form id="ask-form" class="inline-form">
+            <input id="ask-input" type="text" placeholder="e.g. Why is the staff subnet that size?" aria-label="Question about the design" />
+            <button type="submit" id="ask-btn" class="pill-btn">Ask</button>
+          </form>
+          <div id="ask-status" class="status" hidden></div>
+          <div id="ask-answer" class="answer" hidden></div>
+        </div>
       </div>
     </section>
   </main>
@@ -141,6 +235,6 @@
     <div class="wrap">AI Network Architect Copilot &middot; Built by Samir &amp; Nyles for LovHack Season 3</div>
   </footer>
 
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>

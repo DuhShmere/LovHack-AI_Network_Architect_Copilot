@@ -57,7 +57,7 @@ def diff_plans(old: NetworkPlan, new: NetworkPlan) -> list[str]:
         a, b = old_counts[node_type], new_counts[node_type]
         if a != b:
             noun = DEVICE_NAMES.get(node_type, node_type)
-            changes.append(f"{noun.capitalize()}: {a} -> {b}")
+            changes.append(f"{noun[0].upper()}{noun[1:]}: {a} -> {b}")
 
     return changes or ["No change to the design."]
 

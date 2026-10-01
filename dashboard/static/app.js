@@ -36,7 +36,25 @@ document.getElementById("download-diagram-btn").addEventListener("click", () => 
   window.print();
 });
 
-let originalResult = null; // the last successful /design response ({plan, validation, configs})
+let originalResult = null; // the last successful /design or /refine result ({plan, validation, configs})
+let shownPlan = null; // the plan currently drawn (the original, or a sabotaged copy)
+let failedDevices = new Set(); // devices taken down in the simulator
+let highlightedPath = []; // node ids of the flow traced on the topology
+
+async function postJSON(url, payload) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  let body;
+  try {
+    body = await res.json();
+  } catch {
+    body = { detail: res.statusText };
+  }
+  return { ok: res.ok, status: res.status, body };
+}
 
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -94,11 +112,10 @@ form.addEventListener("submit", async (e) => {
       return;
     }
 
-    originalResult = body;
-    renderResult(body);
+    document.getElementById("changes-banner").hidden = true;
+    showDesign(body);
     resultsSection.hidden = false;
-    scrollToValidation();
-    loadSabotages(body.plan);
+    document.getElementById("requirements-section").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) {
     showError(`Request failed: ${err.message}`);
   } finally {
@@ -106,11 +123,33 @@ form.addEventListener("submit", async (e) => {
   }
 });
 
+// A new real design (from /design or /refine): render it and load everything
+// computed from it.
+function showDesign(result) {
+  originalResult = result;
+  failedDevices = new Set();
+  highlightedPath = [];
+  whatChangedBanner.hidden = true;
+  renderResult(result);
+  loadSabotages(result.plan);
+  loadSimulation(result.plan);
+  loadBom(result.plan);
+  resetAsk(result.plan);
+}
+
 function renderResult(result, highlightCheck) {
+  shownPlan = result.plan;
+  renderRequirements(result.plan.spec);
   renderValidation(result.validation, highlightCheck);
-  renderTopology(result.plan.nodes, result.plan.links);
+  drawTopology();
   renderVlans(result.plan.vlans);
   renderConfigs(result.configs || []);
+}
+
+function drawTopology() {
+  // Simulator state only applies to the original design, not a sabotaged copy.
+  const live = shownPlan === originalResult?.plan;
+  renderTopology(shownPlan.nodes, shownPlan.links, live ? { failed: failedDevices, path: highlightedPath } : {});
 }
 
 function renderValidation(validation, highlightCheck) {
@@ -231,6 +270,7 @@ function renderVlans(vlans) {
 function renderConfigs(configs) {
   const list = document.getElementById("configs-list");
   list.innerHTML = "";
+  document.getElementById("download-all-btn").hidden = configs.length === 0;
   if (configs.length === 0) {
     list.innerHTML = '<p style="color: var(--text-dim); margin: 0;">No configs generated (validation failed, or this device type doesn\'t need one).</p>';
     return;
@@ -344,8 +384,10 @@ function wrapLabel(label, maxChars = 16) {
   return at > 0 ? [label.slice(0, at), label.slice(at + 1)] : [label];
 }
 
-function renderTopology(nodes, links) {
+function renderTopology(nodes, links, { failed = new Set(), path = [] } = {}) {
   const container = document.getElementById("topology-svg-container");
+  const pairKey = (a, b) => [a, b].sort().join("|");
+  const tracedLinks = new Set(path.slice(1).map((id, i) => pairKey(path[i], id)));
   container.innerHTML = "";
   if (nodes.length === 0) return;
 
@@ -432,13 +474,16 @@ function renderTopology(nodes, links) {
     line.setAttribute("y1", y1);
     line.setAttribute("x2", x2);
     line.setAttribute("y2", y2);
-    line.setAttribute("class", `link-line ${link.link_type}`);
+    const down = failed.has(link.source_id) || failed.has(link.target_id);
+    const traced = tracedLinks.has(pairKey(link.source_id, link.target_id));
+    line.setAttribute("class", `link-line ${link.link_type}${down ? " down" : ""}${traced ? " on-path" : ""}`);
     svg.appendChild(line);
   }
 
   for (const { cx, top, node, lines } of positions.values()) {
     const g = document.createElementNS(SVG_NS, "g");
-    g.setAttribute("class", "node");
+    const isDown = failed.has(node.node_id);
+    g.setAttribute("class", `node${isDown ? " failed" : ""}${path.includes(node.node_id) ? " on-path" : ""}`);
 
     const title = document.createElementNS(SVG_NS, "title");
     title.textContent = `${node.node_id} (${node.node_type})`;
@@ -463,8 +508,426 @@ function renderTopology(nodes, links) {
     });
     g.appendChild(text);
 
+    if (isDown) {
+      const r = ICON * 0.32;
+      const cy = top + ICON / 2;
+      const x = document.createElementNS(SVG_NS, "path");
+      x.setAttribute("d", `M${cx - r} ${cy - r} L${cx + r} ${cy + r} M${cx + r} ${cy - r} L${cx - r} ${cy + r}`);
+      x.setAttribute("class", "failed-x");
+      g.appendChild(x);
+    }
+
     svg.appendChild(g);
   }
 
   container.appendChild(svg);
+}
+
+// --- What we understood + refine --------------------------------------------
+
+const REDUNDANCY_LABELS = {
+  none: "None",
+  dual_wan: "Dual WAN",
+  dual_wan_plus_switch_redundancy: "Dual WAN + redundant core switches",
+};
+
+function renderRequirements(spec) {
+  const guest = spec.needs_guest_wifi ? (spec.guest_wifi_isolated ? "Yes, isolated" : "Yes, not isolated") : "No";
+  const rows = [
+    ["Organization", spec.org_name],
+    ["Users", String(spec.user_count)],
+    ["Departments", spec.department_segments.length ? spec.department_segments.join(", ") : "None beyond staff"],
+    ["Guest wifi", guest],
+    ["Redundancy", REDUNDANCY_LABELS[spec.redundancy] || spec.redundancy],
+    ["Address space", spec.preferred_base_cidr || "Default (10.0.0.0/16)"],
+  ];
+  const dl = document.getElementById("spec-summary");
+  dl.innerHTML = "";
+  for (const [label, value] of rows) {
+    const row = document.createElement("div");
+    row.appendChild(document.createElement("dt")).textContent = label;
+    row.appendChild(document.createElement("dd")).textContent = value;
+    dl.appendChild(row);
+  }
+
+  const assumptions = spec.assumptions || [];
+  document.getElementById("assumptions-block").hidden = assumptions.length === 0;
+  const list = document.getElementById("assumptions-list");
+  list.innerHTML = "";
+  for (const a of assumptions) list.appendChild(document.createElement("li")).textContent = a;
+
+  document.getElementById("notes-block").hidden = !spec.raw_notes;
+  document.getElementById("notes-text").textContent = spec.raw_notes || "";
+}
+
+function setInlineStatus(el, message, isError = false) {
+  el.hidden = !message;
+  el.className = `status${isError ? " error" : ""}`;
+  el.textContent = message || "";
+}
+
+document.getElementById("refine-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = document.getElementById("refine-input");
+  const change = input.value.trim();
+  const status = document.getElementById("refine-status");
+  const btn = document.getElementById("refine-btn");
+  if (!change || !originalResult) return;
+
+  btn.disabled = true;
+  setInlineStatus(status, "Updating the design…");
+  try {
+    const { ok, status: code, body } = await postJSON("/refine", { plan: originalResult.plan, change });
+    if (!ok) {
+      setInlineStatus(status, `(${code}) ${formatDetail(body.detail)}`, true);
+      return;
+    }
+    showDesign(body.result);
+    renderChanges(body.changes, change);
+    input.value = "";
+    setInlineStatus(status, "");
+  } catch (err) {
+    setInlineStatus(status, `Request failed: ${err.message}`, true);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function renderChanges(changes, request) {
+  const banner = document.getElementById("changes-banner");
+  banner.querySelector("h3").textContent = `What changed: “${request}”`;
+  const list = document.getElementById("changes-list");
+  list.innerHTML = "";
+  for (const c of changes) list.appendChild(document.createElement("li")).textContent = c;
+  banner.hidden = false;
+}
+
+// --- Simulate ------------------------------------------------------------------
+
+const SIM_DEVICE_ORDER = ["wan_uplink", "router", "firewall", "core_switch", "access_switch"];
+
+async function loadSimulation(plan) {
+  renderFailureButtons(plan.nodes);
+  const badge = document.getElementById("resilience-badge");
+  const summary = document.getElementById("resilience-summary");
+  badge.textContent = "";
+  badge.className = "badge";
+  summary.textContent = "Trying every single-device failure…";
+
+  runSimulation();
+  const res = await postJSON("/resilience", { plan }).catch(() => null);
+  if (plan !== originalResult.plan) return; // a newer design replaced this one
+  if (!res || !res.ok) {
+    summary.textContent = `Couldn't run the failure analysis${res ? `: ${formatDetail(res.body.detail)}` : "."}`;
+    return;
+  }
+  const spofs = res.body.single_points_of_failure;
+  badge.textContent = spofs.length
+    ? `${spofs.length} SINGLE POINT${spofs.length > 1 ? "S" : ""} OF FAILURE`
+    : "NO SINGLE POINT OF FAILURE";
+  badge.className = `badge ${spofs.length ? "warn" : "pass"}`;
+  summary.textContent = res.body.summary;
+  for (const btn of document.querySelectorAll("#failure-buttons [data-node]")) {
+    const spof = spofs.includes(btn.dataset.node);
+    btn.classList.toggle("spof", spof);
+    btn.title = spof ? "Single point of failure: losing it cuts VLANs off the internet" : "";
+  }
+}
+
+function renderFailureButtons(nodes) {
+  const row = document.getElementById("failure-buttons");
+  row.innerHTML = "";
+  const devices = nodes
+    .filter((n) => SIM_DEVICE_ORDER.includes(n.node_type))
+    .sort((a, b) => SIM_DEVICE_ORDER.indexOf(a.node_type) - SIM_DEVICE_ORDER.indexOf(b.node_type));
+  for (const n of devices) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "chip";
+    btn.dataset.node = n.node_id;
+    btn.textContent = n.label;
+    btn.setAttribute("aria-pressed", "false");
+    btn.addEventListener("click", () => {
+      if (failedDevices.has(n.node_id)) failedDevices.delete(n.node_id);
+      else failedDevices.add(n.node_id);
+      const down = failedDevices.has(n.node_id);
+      btn.classList.toggle("down", down);
+      btn.setAttribute("aria-pressed", String(down));
+      runSimulation();
+    });
+    row.appendChild(btn);
+  }
+  const reset = document.createElement("button");
+  reset.type = "button";
+  reset.className = "chip reset";
+  reset.textContent = "Restore all";
+  reset.addEventListener("click", () => {
+    failedDevices = new Set();
+    for (const b of row.querySelectorAll(".chip.down")) {
+      b.classList.remove("down");
+      b.setAttribute("aria-pressed", "false");
+    }
+    runSimulation();
+  });
+  row.appendChild(reset);
+}
+
+let simulationRun = 0; // ignore responses from clicks that have been superseded
+
+async function runSimulation() {
+  const run = ++simulationRun;
+  const plan = originalResult.plan;
+  const summary = document.getElementById("simulation-summary");
+  highlightedPath = [];
+  document.getElementById("flow-detail").hidden = true;
+  drawTopology();
+  summary.className = "sim-summary";
+  summary.textContent = "Simulating…";
+  try {
+    const { ok, body } = await postJSON("/simulate", { plan, failed: [...failedDevices] });
+    if (run !== simulationRun) return;
+    if (!ok) {
+      summary.textContent = `Simulation failed: ${formatDetail(body.detail)}`;
+      return;
+    }
+    const cut = body.flows.some((f) => f.destination === "internet" && !f.allowed);
+    summary.className = `sim-summary ${cut ? "bad" : "good"}`;
+    summary.textContent = body.summary;
+    renderMatrix(body.flows);
+  } catch (err) {
+    if (run === simulationRun) summary.textContent = `Simulation failed: ${err.message}`;
+  }
+}
+
+function renderMatrix(flows) {
+  const table = document.getElementById("reachability-matrix");
+  table.innerHTML = "";
+  const sources = [...new Set(flows.map((f) => f.source))];
+  const dests = [...sources, "internet"];
+  const byKey = new Map(flows.map((f) => [`${f.source}>${f.destination}`, f]));
+
+  const headRow = table.createTHead().insertRow();
+  headRow.appendChild(document.createElement("th")).textContent = "from ↓ / to →";
+  for (const d of dests) headRow.appendChild(document.createElement("th")).textContent = d;
+
+  const tbody = table.createTBody();
+  for (const src of sources) {
+    const tr = tbody.insertRow();
+    tr.appendChild(document.createElement("th")).textContent = src;
+    for (const dst of dests) {
+      const td = tr.insertCell();
+      const flow = byKey.get(`${src}>${dst}`);
+      if (!flow) {
+        td.className = "self";
+        td.textContent = "—";
+        continue;
+      }
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `cell ${flow.allowed ? "ok" : "blocked"}`;
+      btn.textContent = flow.allowed ? "✓" : "✗";
+      btn.title = `${src} → ${dst}: ${flow.allowed ? "allowed" : "blocked"} (${flow.reason})`;
+      btn.setAttribute("aria-label", btn.title);
+      btn.addEventListener("click", () => showFlow(flow));
+      td.appendChild(btn);
+    }
+  }
+}
+
+function showFlow(flow) {
+  const detail = document.getElementById("flow-detail");
+  detail.hidden = false;
+  detail.className = `flow-detail ${flow.allowed ? "ok" : "blocked"}`;
+  detail.innerHTML = "";
+  detail.appendChild(document.createElement("strong")).textContent =
+    `${flow.source} → ${flow.destination}: ${flow.allowed ? "allowed" : "blocked"}`;
+  const path = detail.appendChild(document.createElement("span"));
+  path.className = "mono";
+  path.textContent = flow.path.length ? flow.path.join(" → ") : "(never leaves the VLAN)";
+  detail.appendChild(document.createElement("span")).textContent = flow.reason;
+  const hint = detail.appendChild(document.createElement("a"));
+  hint.href = "#topology-section";
+  hint.textContent = "See the path on the topology ↑";
+
+  if (shownPlan !== originalResult.plan) restoreOriginal();
+  highlightedPath = flow.path;
+  drawTopology();
+}
+
+// --- Bill of materials -------------------------------------------------------
+
+const money = (n) => `$${n.toLocaleString("en-US")}`;
+
+async function loadBom(plan) {
+  const section = document.getElementById("bom-section");
+  const tbody = document.querySelector("#bom-table tbody");
+  const tfoot = document.querySelector("#bom-table tfoot");
+  const res = await postJSON("/bom", { plan }).catch(() => null);
+  if (plan !== originalResult.plan) return;
+  section.hidden = !res || !res.ok;
+  if (section.hidden) return;
+
+  const bom = res.body;
+  tbody.innerHTML = "";
+  for (const line of bom.lines) {
+    const per = line.recurring ? "/mo" : "";
+    const tr = tbody.insertRow();
+    tr.innerHTML = `
+      <td><div class="item">${escapeHtml(line.item)}</div><div class="item-sub">${escapeHtml(line.description)}</div></td>
+      <td class="mono">${line.quantity}</td>
+      <td class="mono num">${money(line.unit_cost)}${per}</td>
+      <td class="mono num">${money(line.subtotal)}${per}</td>`;
+  }
+  tfoot.innerHTML = `
+    <tr><th colspan="3">One-time total</th><td class="mono num">${money(bom.one_time_total)}</td></tr>
+    <tr><th colspan="3">Monthly recurring</th><td class="mono num">${money(bom.monthly_total)}/mo</td></tr>`;
+  const notes = document.getElementById("bom-notes");
+  notes.innerHTML = "";
+  for (const n of bom.notes) notes.appendChild(document.createElement("li")).textContent = n;
+}
+
+// --- Download all configs (.zip) ---------------------------------------------
+
+document.getElementById("download-all-btn").addEventListener("click", () => {
+  if (!originalResult) return;
+  const slug = originalResult.plan.spec.org_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "network";
+  const files = originalResult.configs.map((c) => ({ name: `${slug}/configs/${c.node_id}.cfg`, text: c.config_text }));
+  files.push({ name: `${slug}/design.json`, text: JSON.stringify(originalResult, null, 2) });
+  downloadBlob(makeZip(files), `${slug}-configs.zip`);
+});
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+
+function crc32(bytes) {
+  let crc = 0xffffffff;
+  for (const b of bytes) crc = CRC_TABLE[(crc ^ b) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+// Minimal uncompressed ("stored") ZIP writer -- plenty for a few text files,
+// and no third-party library to load.
+function makeZip(files) {
+  const enc = new TextEncoder();
+  const DOS_DATE = (1 << 5) | 1; // 1980-01-01
+  const UTF8_NAMES = 0x0800;
+  const parts = [];
+  const central = [];
+  let offset = 0;
+
+  for (const f of files) {
+    const name = enc.encode(f.name);
+    const data = enc.encode(f.text);
+    const crc = crc32(data);
+
+    const local = new DataView(new ArrayBuffer(30));
+    local.setUint32(0, 0x04034b50, true);
+    local.setUint16(4, 20, true);
+    local.setUint16(6, UTF8_NAMES, true);
+    local.setUint16(12, DOS_DATE, true);
+    local.setUint32(14, crc, true);
+    local.setUint32(18, data.length, true);
+    local.setUint32(22, data.length, true);
+    local.setUint16(26, name.length, true);
+    parts.push(local, name, data);
+
+    const entry = new DataView(new ArrayBuffer(46));
+    entry.setUint32(0, 0x02014b50, true);
+    entry.setUint16(4, 20, true);
+    entry.setUint16(6, 20, true);
+    entry.setUint16(8, UTF8_NAMES, true);
+    entry.setUint16(14, DOS_DATE, true);
+    entry.setUint32(16, crc, true);
+    entry.setUint32(20, data.length, true);
+    entry.setUint32(24, data.length, true);
+    entry.setUint16(28, name.length, true);
+    entry.setUint32(42, offset, true);
+    central.push(entry, name);
+
+    offset += 30 + name.length + data.length;
+  }
+
+  const centralSize = central.reduce((n, p) => n + p.byteLength, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true);
+  end.setUint16(8, files.length, true);
+  end.setUint16(10, files.length, true);
+  end.setUint32(12, centralSize, true);
+  end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end], { type: "application/zip" });
+}
+
+// --- Ask about this design ----------------------------------------------------
+
+function resetAsk(plan) {
+  setInlineStatus(document.getElementById("ask-status"), "");
+  document.getElementById("ask-answer").hidden = true;
+  const suggestions = [
+    "Why is each subnet the size it is?",
+    plan.spec.guest_wifi_isolated && "How is guest traffic kept away from internal systems?",
+    plan.spec.redundancy !== "none" && "What happens if the primary internet connection fails?",
+    "Which devices should I configure first?",
+  ].filter(Boolean);
+  const row = document.getElementById("ask-suggestions");
+  row.innerHTML = "";
+  for (const q of suggestions) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "chip";
+    btn.textContent = q;
+    btn.addEventListener("click", () => {
+      document.getElementById("ask-input").value = q;
+      askQuestion(q);
+    });
+    row.appendChild(btn);
+  }
+}
+
+document.getElementById("ask-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const q = document.getElementById("ask-input").value.trim();
+  if (q && originalResult) askQuestion(q);
+});
+
+async function askQuestion(question) {
+  const status = document.getElementById("ask-status");
+  const answer = document.getElementById("ask-answer");
+  const btn = document.getElementById("ask-btn");
+  btn.disabled = true;
+  answer.hidden = true;
+  setInlineStatus(status, "Reading your design…");
+  try {
+    const { ok, status: code, body } = await postJSON("/explain", { result: originalResult, question });
+    if (!ok) {
+      setInlineStatus(status, `(${code}) ${formatDetail(body.detail)}`, true);
+      return;
+    }
+    setInlineStatus(status, "");
+    answer.innerHTML = "";
+    const q = answer.appendChild(document.createElement("p"));
+    q.className = "answer-q";
+    q.textContent = question;
+    for (const para of body.answer.split(/\n{2,}/)) {
+      answer.appendChild(document.createElement("p")).textContent = para;
+    }
+    answer.hidden = false;
+  } catch (err) {
+    setInlineStatus(status, `Request failed: ${err.message}`, true);
+  } finally {
+    btn.disabled = false;
+  }
 }

@@ -23,10 +23,9 @@ client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
 MODEL = "claude-sonnet-5"
 
-EXTRACTION_SYSTEM_PROMPT = """\
-You extract structured network requirements from a plain-English description.
-Respond ONLY with a JSON object matching this shape, nothing else:
-
+# Shared by every prompt that returns a spec, so the allowed values (the
+# redundancy enum especially) are always spelled out.
+SPEC_SHAPE = """\
 {
   "org_name": string,
   "user_count": integer,
@@ -37,7 +36,13 @@ Respond ONLY with a JSON object matching this shape, nothing else:
   "preferred_base_cidr": string or null,
   "raw_notes": string or null,
   "assumptions": [string, ...]
-}
+}"""
+
+EXTRACTION_SYSTEM_PROMPT = f"""\
+You extract structured network requirements from a plain-English description.
+Respond ONLY with a JSON object matching this shape, nothing else:
+
+{SPEC_SHAPE}
 
 If the description doesn't name the organization, use a short descriptive
 name based on what it is (e.g. "Dental Clinic", "Main Office").
@@ -48,14 +53,20 @@ rather than read directly, with the reasoning in one short sentence, e.g.
 staff excluded". Use [] if everything was stated outright.
 """
 
-REFINE_SYSTEM_PROMPT = """\
+REFINE_SYSTEM_PROMPT = f"""\
 You update structured network requirements. You are given the current
 requirements as JSON and a requested change in plain English.
 
-Respond ONLY with the complete updated JSON object, in exactly the same
-shape as the input. Change only what the request asks for, plus anything
-it directly implies. In "assumptions", list what you inferred for this
-change, and keep earlier assumptions that still hold.
+Respond ONLY with the complete updated JSON object, nothing else, matching
+this shape -- enum fields must use one of the listed values exactly (a
+single internet connection is "none"):
+
+{SPEC_SHAPE}
+
+Change only what the request asks for, plus anything it directly implies.
+In "assumptions", list what you inferred for this change, and keep earlier
+assumptions that still hold. If the request asks for something this shape
+can't express, leave the fields as they are and say so in "raw_notes".
 """
 
 EXPLAIN_SYSTEM_PROMPT = """\
