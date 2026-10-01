@@ -81,7 +81,7 @@ def _reachable(adj: dict[str, set[str]], start: set[str], blocked: set[str] = fr
     return seen
 
 
-def _nodes_of_type(plan: NetworkPlan, node_type: str) -> list[str]:
+def node_ids_of_type(plan: NetworkPlan, node_type: str) -> list[str]:
     return [n.node_id for n in plan.nodes if n.node_type == node_type]
 
 
@@ -189,7 +189,7 @@ def check_topology_connected(plan: NetworkPlan) -> ValidationCheck:
     if dangling:
         return _check("topology_connected", False, f"Links reference unknown nodes: {', '.join(dangling)}.")
 
-    uplinks = set(_nodes_of_type(plan, "wan_uplink"))
+    uplinks = set(node_ids_of_type(plan, "wan_uplink"))
     if not uplinks:
         return _check("topology_connected", False, "No WAN uplink -- the network has no path to the internet.")
 
@@ -211,7 +211,7 @@ def check_redundancy_present(plan: NetworkPlan) -> ValidationCheck:
     details = []
 
     # Dual WAN: two uplinks, each landing on a different router.
-    router_ids = set(_nodes_of_type(plan, "router"))
+    router_ids = set(node_ids_of_type(plan, "router"))
     uplink_router = {}
     for l in plan.links:
         if l.link_type in ("wan", "redundant_wan"):
@@ -231,9 +231,9 @@ def check_redundancy_present(plan: NetworkPlan) -> ValidationCheck:
 
     # Switch redundancy: two cores, every access switch dual-homed.
     if level == RedundancyLevel.dual_wan_plus_switch_redundancy:
-        cores = set(_nodes_of_type(plan, "core_switch"))
+        cores = set(node_ids_of_type(plan, "core_switch"))
         adj = _adjacency(plan)
-        single_homed = [a for a in _nodes_of_type(plan, "access_switch") if len(adj[a] & cores) < 2]
+        single_homed = [a for a in node_ids_of_type(plan, "access_switch") if len(adj[a] & cores) < 2]
         if len(cores) < 2:
             problems.append(f"switch redundancy requires 2 core switches, found {len(cores)}")
         elif single_homed:
@@ -271,11 +271,11 @@ def check_guest_isolation(plan: NetworkPlan) -> ValidationCheck:
     if shared:
         return _check("guest_isolation", False, f"Guest subnet {guest_net} overlaps {', '.join(shared)}.")
 
-    firewalls = set(_nodes_of_type(plan, "firewall"))
+    firewalls = set(node_ids_of_type(plan, "firewall"))
     if not firewalls:
         return _check("guest_isolation", False, "No firewall to enforce guest isolation policy.")
-    cores = set(_nodes_of_type(plan, "core_switch"))
-    bypass = cores & _reachable(_adjacency(plan), set(_nodes_of_type(plan, "wan_uplink")), blocked=firewalls)
+    cores = set(node_ids_of_type(plan, "core_switch"))
+    bypass = cores & _reachable(_adjacency(plan), set(node_ids_of_type(plan, "wan_uplink")), blocked=firewalls)
     if bypass:
         return _check(
             "guest_isolation", False,
