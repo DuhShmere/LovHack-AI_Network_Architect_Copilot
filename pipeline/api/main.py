@@ -7,13 +7,21 @@ Run with: uvicorn pipeline.api.main:app --reload
 
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
 from pipeline.api.routes import router
 
 app = FastAPI(title="AI Network Architect Copilot")
 app.include_router(router)
+
+
+@app.middleware("http")
+async def revalidate_every_load(request: Request, call_next):
+    # Without this, browsers keep serving a stale dashboard after redesigns.
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @app.get("/health")

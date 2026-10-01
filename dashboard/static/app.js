@@ -253,17 +253,92 @@ function layerOf(nodeType) {
   return idx === -1 ? LAYER_ORDER.length : idx;
 }
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+const ICON = 68; // icons are drawn in a 64x64 box and scaled to this size
+
+function tint(hex, amount) {
+  const n = parseInt(hex.slice(1), 16);
+  const mix = (c) => Math.round(c + (255 - c) * amount);
+  const r = mix(n >> 16), g = mix((n >> 8) & 255), b = mix(n & 255);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function shade(hex, amount) {
+  const n = parseInt(hex.slice(1), 16);
+  const dim = (c) => Math.round(c * (1 - amount));
+  return `rgb(${dim(n >> 16)}, ${dim((n >> 8) & 255)}, ${dim(n & 255)})`;
+}
+
+// Our own drawings of the standard network-diagram symbols, in a 64x64 box.
+const ICONS = {
+  wan_uplink: (c) => `
+    <path d="M17 48 a11 11 0 0 1 1.5-21.9 a15 15 0 0 1 28.6 2.6 a9.7 9.7 0 0 1 -0.6 19.3 Z"
+          fill="${tint(c, 0.55)}" stroke="${c}" stroke-width="2.5" stroke-linejoin="round" />`,
+
+  router: (c) => `
+    <path d="M6 26 v14 a26 9 0 0 0 52 0 v-14" fill="${c}" />
+    <ellipse cx="32" cy="26" rx="26" ry="9" fill="${tint(c, 0.35)}" />
+    <g stroke="#fff" stroke-width="2.4" stroke-linecap="round" fill="none">
+      <path d="M23 21 l7 4 M27 20.5 l-4 0.5 l1.5 3.5" />
+      <path d="M41 31 l-7 -4 M37 31.5 l4 -0.5 l-1.5 -3.5" />
+      <path d="M41 21 l-7 4 M37 20.5 l4 0.5 l-1.5 3.5" />
+      <path d="M23 31 l7 -4 M27 31.5 l-4 -0.5 l1.5 -3.5" />
+    </g>`,
+
+  firewall: (c) => `
+    <rect x="8" y="14" width="48" height="38" rx="2" fill="${c}" />
+    <g stroke="#fff" stroke-width="2">
+      <path d="M8 23.5 h48 M8 33 h48 M8 42.5 h48" />
+      <path d="M24 14 v9.5 M40 14 v9.5 M16 23.5 v9.5 M32 23.5 v9.5 M48 23.5 v9.5
+               M24 33 v9.5 M40 33 v9.5 M16 42.5 v9.5 M32 42.5 v9.5 M48 42.5 v9.5" />
+    </g>`,
+
+  core_switch: (c) => switchIcon(c),
+  access_switch: (c) => switchIcon(c),
+
+  ap: (c) => `
+    <g fill="none" stroke="${c}" stroke-width="2.6" stroke-linecap="round">
+      <path d="M24 22 a11 11 0 0 1 16 0" />
+      <path d="M19 16.5 a18 18 0 0 1 26 0" />
+      <path d="M22 38 l-4 -14 M42 38 l4 -14" />
+    </g>
+    <circle cx="32" cy="27" r="2.6" fill="${c}" />
+    <rect x="12" y="37" width="40" height="13" rx="4" fill="${c}" />
+    <circle cx="20" cy="43.5" r="1.8" fill="#fff" />
+    <circle cx="26" cy="43.5" r="1.8" fill="#fff" />`,
+
+  other: (c) => `<rect x="10" y="16" width="44" height="32" rx="6" fill="${c}" />`,
+};
+
+function switchIcon(c) {
+  return `
+    <polygon points="6,30 18,20 58,20 46,30" fill="${tint(c, 0.35)}" />
+    <rect x="6" y="30" width="40" height="16" fill="${c}" />
+    <polygon points="46,30 58,20 58,36 46,46" fill="${shade(c, 0.3)}" />
+    <g stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none">
+      <path d="M21 23 h20 M37 21 l4 2 l-4 2" />
+      <path d="M43 27 h-20 M27 25 l-4 2 l4 2" />
+    </g>`;
+}
+
+function wrapLabel(label, maxChars = 16) {
+  if (label.length <= maxChars) return [label];
+  const cut = label.lastIndexOf(" ", maxChars);
+  const at = cut > 0 ? cut : label.indexOf(" ");
+  return at > 0 ? [label.slice(0, at), label.slice(at + 1)] : [label];
+}
+
 function renderTopology(nodes, links) {
   const container = document.getElementById("topology-svg-container");
   container.innerHTML = "";
   if (nodes.length === 0) return;
 
-  const layerHeight = 110;
-  const colSpacing = 160;
-  const nodeW = 130;
-  const nodeH = 42;
-  const marginX = 40;
-  const marginY = 30;
+  const slotW = 150; // width reserved per node, so labels have room
+  const colSpacing = 170;
+  const layerHeight = 155;
+  const marginX = 20;
+  const marginY = 16;
+  const lineH = 15;
 
   const layers = new Map();
   for (const node of nodes) {
@@ -272,78 +347,104 @@ function renderTopology(nodes, links) {
     layers.get(l).push(node);
   }
   const sortedLayerKeys = [...layers.keys()].sort((a, b) => a - b);
+  const maxCols = Math.max(...[...layers.values()].map((row) => row.length));
+  const totalWidth = marginX * 2 + (maxCols - 1) * colSpacing + slotW;
 
-  const positions = new Map(); // node_id -> {x, y}
-  let maxCols = 1;
+  const neighbors = new Map(nodes.map((n) => [n.node_id, []]));
+  for (const l of links) {
+    neighbors.get(l.source_id)?.push(l.target_id);
+    neighbors.get(l.target_id)?.push(l.source_id);
+  }
+
+  // positions: node_id -> {cx, top, iconBottom, labelBottom, node, lines}
+  const positions = new Map();
   sortedLayerKeys.forEach((layerKey, rowIdx) => {
-    const rowNodes = layers.get(layerKey);
-    maxCols = Math.max(maxCols, rowNodes.length);
+    // Order each row by where its already-placed neighbors sit, so a device
+    // lands under the thing it plugs into instead of links crisscrossing.
+    const rowNodes = layers
+      .get(layerKey)
+      .map((node, i) => {
+        const placed = neighbors.get(node.node_id).map((id) => positions.get(id)).filter(Boolean);
+        const key = placed.length ? placed.reduce((s, p) => s + p.cx, 0) / placed.length : i;
+        return { node, key, i };
+      })
+      .sort((a, b) => a.key - b.key || a.i - b.i)
+      .map((entry) => entry.node);
+    const rowWidth = (rowNodes.length - 1) * colSpacing + slotW;
+    const rowStart = (totalWidth - rowWidth) / 2;
     rowNodes.forEach((node, colIdx) => {
+      const top = marginY + rowIdx * layerHeight;
+      const lines = wrapLabel(node.label);
       positions.set(node.node_id, {
-        x: marginX + colIdx * colSpacing,
-        y: marginY + rowIdx * layerHeight,
+        cx: rowStart + colIdx * colSpacing + slotW / 2,
+        top,
+        iconBottom: top + ICON,
+        labelBottom: top + ICON + 8 + lines.length * lineH,
         node,
+        lines,
       });
     });
   });
 
-  // Center each row within the widest row.
-  const totalWidth = marginX * 2 + (maxCols - 1) * colSpacing + nodeW;
-  sortedLayerKeys.forEach((layerKey) => {
-    const rowNodes = layers.get(layerKey);
-    const rowWidth = marginX * 2 + (rowNodes.length - 1) * colSpacing + nodeW;
-    const offset = (totalWidth - rowWidth) / 2;
-    if (offset > 0) {
-      for (const node of rowNodes) {
-        positions.get(node.node_id).x += offset;
-      }
-    }
-  });
+  const lastRowBottom = Math.max(...[...positions.values()].map((p) => p.labelBottom));
+  const totalHeight = lastRowBottom + marginY;
 
-  const totalHeight = marginY * 2 + (sortedLayerKeys.length - 1) * layerHeight + nodeH;
-
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("width", totalWidth);
   svg.setAttribute("height", totalHeight);
   svg.setAttribute("viewBox", `0 0 ${totalWidth} ${totalHeight}`);
 
-  // Links first, so nodes draw on top.
+  // Links first, so icons draw on top. Between layers, run from the bottom
+  // of the upper node's label to the top of the lower icon, so lines never
+  // cross the text; within a layer, join the icons side to side.
   for (const link of links) {
-    const from = positions.get(link.source_id);
-    const to = positions.get(link.target_id);
-    if (!from || !to) continue;
-    const x1 = from.x + nodeW / 2;
-    const y1 = from.y + nodeH / 2;
-    const x2 = to.x + nodeW / 2;
-    const y2 = to.y + nodeH / 2;
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    path.setAttribute("x1", x1);
-    path.setAttribute("y1", y1);
-    path.setAttribute("x2", x2);
-    path.setAttribute("y2", y2);
-    path.setAttribute("class", `link-line ${link.link_type}`);
-    svg.appendChild(path);
+    const a = positions.get(link.source_id);
+    const b = positions.get(link.target_id);
+    if (!a || !b) continue;
+    let x1, y1, x2, y2;
+    if (a.top === b.top) {
+      const [left, right] = a.cx < b.cx ? [a, b] : [b, a];
+      x1 = left.cx + ICON / 2; x2 = right.cx - ICON / 2;
+      y1 = y2 = left.top + ICON / 2;
+    } else {
+      const [upper, lower] = a.top < b.top ? [a, b] : [b, a];
+      x1 = upper.cx; y1 = upper.labelBottom + 4;
+      x2 = lower.cx; y2 = lower.top;
+    }
+    const line = document.createElementNS(SVG_NS, "line");
+    line.setAttribute("x1", x1);
+    line.setAttribute("y1", y1);
+    line.setAttribute("x2", x2);
+    line.setAttribute("y2", y2);
+    line.setAttribute("class", `link-line ${link.link_type}`);
+    svg.appendChild(line);
   }
 
-  // Nodes.
-  for (const { x, y, node } of positions.values()) {
-    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  for (const { cx, top, node, lines } of positions.values()) {
+    const g = document.createElementNS(SVG_NS, "g");
     g.setAttribute("class", "node");
 
-    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    rect.setAttribute("x", x);
-    rect.setAttribute("y", y);
-    rect.setAttribute("width", nodeW);
-    rect.setAttribute("height", nodeH);
-    rect.setAttribute("rx", 8);
-    rect.setAttribute("fill", NODE_COLORS[node.node_type] || NODE_COLORS.other);
-    g.appendChild(rect);
+    const title = document.createElementNS(SVG_NS, "title");
+    title.textContent = `${node.node_id} (${node.node_type})`;
+    g.appendChild(title);
 
-    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    text.setAttribute("x", x + nodeW / 2);
-    text.setAttribute("y", y + nodeH / 2 + 4);
+    const color = NODE_COLORS[node.node_type] || NODE_COLORS.other;
+    const draw = ICONS[node.node_type] || ICONS.other;
+    const icon = document.createElementNS(SVG_NS, "g");
+    icon.setAttribute("transform", `translate(${cx - ICON / 2} ${top}) scale(${ICON / 64})`);
+    icon.innerHTML = draw(color);
+    g.appendChild(icon);
+
+    const text = document.createElementNS(SVG_NS, "text");
+    text.setAttribute("class", "node-label");
     text.setAttribute("text-anchor", "middle");
-    text.textContent = node.label;
+    lines.forEach((line, i) => {
+      const tspan = document.createElementNS(SVG_NS, "tspan");
+      tspan.setAttribute("x", cx);
+      tspan.setAttribute("y", top + ICON + 8 + lineH * (i + 1) - 3);
+      tspan.textContent = line;
+      text.appendChild(tspan);
+    });
     g.appendChild(text);
 
     svg.appendChild(g);

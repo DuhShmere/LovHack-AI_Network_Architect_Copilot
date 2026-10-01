@@ -378,8 +378,7 @@ td.mono { font-family: var(--mono); }
 }
 .config-row button:hover:not(:disabled) { background: var(--green); color: #fff; }
 
-.node rect { stroke: rgba(255, 255, 255, 0.6); stroke-width: 1; }
-.node text { fill: #fff; font-size: 11px; font-weight: 700; font-family: var(--font); }
+.node-label { fill: var(--text); font-size: 12.5px; font-weight: 700; font-family: var(--font); }
 .link-line { stroke: #b9bdc3; stroke-width: 1.5; fill: none; }
 .link-line.redundant_wan, .link-line.wan { stroke: var(--green); }
 .link-line.access { stroke-dasharray: 3 3; }
