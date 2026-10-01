@@ -26,7 +26,10 @@ Built for LovHack Season 3 (Sept 26 – Oct 4, 2026).
   valid VLAN IDs, required segments present, subnet capacity, topology
   connectivity, redundancy present, guest isolation). `config_gen.py` emits
   Cisco IOS-style config per device (skips ISP `wan_uplink` nodes, and skips
-  all configs if validation fails).
+  all configs if validation fails). Once the design passes, `config_audit.py`
+  re-reads those generated configs and adds up to 4 more checks: guest ACLs
+  evaluated rule by rule, gateway/HSRP/DHCP agreement, no IP conflicts, and
+  static routes traced hop by hop (including failover routes).
 - **`/design` is fully live end-to-end** — plain English in, a real validated
   `FullResult` out.
 - **`pipeline/tests/`** — route-level tests for `/health`, `/parse`, `/design`

@@ -5,6 +5,9 @@ Owner: Nyles. This is the "proof it's real" demo moment -- it runs a fixed
 set of concrete checks and returns pass/fail with reasons, not another
 LLM call.
 
+Once the design checks pass, the configs generated from it are audited
+too (engine/config_audit.py), so the report covers what actually ships.
+
 Every check takes the plan and returns one ValidationCheck. Checks must
 never raise on a malformed plan -- a broken plan should come back as a
 failed report, not a 500.
@@ -16,6 +19,8 @@ from collections import defaultdict, deque
 
 from shared.schema import NetworkPlan, ValidationReport, ValidationCheck, RedundancyLevel, VLANAllocation
 from engine.taxonomy import normalize_segment
+from engine.config_gen import generate_configs
+from engine.config_audit import audit_configs
 
 RFC1918 = [
     ipaddress.ip_network("10.0.0.0/8"),
@@ -36,7 +41,19 @@ def validate_plan(plan: NetworkPlan) -> ValidationReport:
         check_redundancy_present(plan),
         check_guest_isolation(plan),
     ]
+    # Only a sound design gets configs, so only a sound design gets its
+    # configs audited -- and a broken one keeps exactly the checks it failed.
+    if all(c.passed for c in checks):
+        checks += audit_generated_configs(plan)
     return ValidationReport(overall_pass=all(c.passed for c in checks), checks=checks)
+
+
+def audit_generated_configs(plan: NetworkPlan) -> list[ValidationCheck]:
+    try:
+        configs = generate_configs(plan)
+    except Exception as e:  # never 500 on a plan the generator can't render
+        return [_check("configs_generated", False, f"Config generation failed: {e}")]
+    return audit_configs(plan, configs)
 
 
 # ---------------------------------------------------------------------------

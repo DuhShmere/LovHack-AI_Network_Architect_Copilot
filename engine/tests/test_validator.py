@@ -18,6 +18,8 @@ CHECK_NAMES = {
     "redundancy_present",
     "guest_isolation",
 }
+# Run on top of CHECK_NAMES once the design passes (engine/config_audit.py).
+AUDIT_CHECK_NAMES = {"gateways_consistent", "no_ip_conflicts", "routing_complete"}
 
 
 def _plan(**overrides):
@@ -66,7 +68,8 @@ def test_every_generated_plan_passes(user_count, redundancy, guest, base):
     report = validate_plan(plan)
     failures = [f"{c.check_name}: {c.detail}" for c in report.checks if not c.passed]
     assert report.overall_pass, failures
-    assert {c.check_name for c in report.checks} == CHECK_NAMES
+    audits = AUDIT_CHECK_NAMES | ({"guest_isolation_enforced"} if guest else set())
+    assert {c.check_name for c in report.checks} == CHECK_NAMES | audits
 
 
 def test_details_are_specific():
