@@ -233,3 +233,11 @@ def _ace(action, src, dst, all_traffic=True):
 ])
 def test_acl_verdict(entries, expected):
     assert acl_verdict(entries, GUEST, STAFF) == expected
+
+
+def test_interface_address_on_the_hsrp_virtual_ip_is_caught():
+    plan, texts = _build()  # dual core: the management gateway is a VIP
+    mgmt_gw = re.search(r"^ip default-gateway (\S+)$", texts["access1"], re.M).group(1)
+    own = re.search(r"interface Vlan99\n.*? ip address (\S+)", texts["access1"], re.S).group(1)
+    texts["access1"] = _replace(texts["access1"], f" ip address {own} ", f" ip address {mgmt_gw} ")
+    _assert_only_fails(plan, texts, "no_ip_conflicts", "the HSRP virtual IP")

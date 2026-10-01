@@ -183,12 +183,25 @@ def test_demo_sabotages_lists_all_applicable_sabotages():
     r = client.post("/demo/sabotages", json={"plan": plan})
     assert r.status_code == 200
     sabotages = r.json()
-    assert len(sabotages) == 8
-    assert {s["key"] for s in sabotages} == {
+    assert len(sabotages) == 12
+    assert {s["key"] for s in sabotages if s["kind"] == "design"} == {
         "overlapping_subnets", "public_subnet", "undersized_subnet",
         "duplicate_vlan_id", "missing_segment", "orphaned_switch",
         "missing_backup_wan", "firewall_bypass",
     }
+    assert {s["key"] for s in sabotages if s["kind"] == "config"} == {
+        "strip_guest_acl", "wrong_dhcp_gateway", "duplicate_ip", "drop_return_route",
+    }
+
+
+def test_demo_break_config_sabotage_is_caught_by_the_config_audit():
+    plan = _real_plan()
+    r = client.post("/demo/break", json={"plan": plan, "sabotage": "strip_guest_acl"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["plan"] == plan
+    failed = {c["check_name"] for c in body["validation"]["checks"] if not c["passed"]}
+    assert failed == {"guest_isolation_enforced"}
 
 
 def test_demo_break_flips_only_its_target_check():

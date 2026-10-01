@@ -335,6 +335,19 @@ textarea:focus { outline: 2px solid var(--green); outline-offset: -1px; border-c
 
 .demo-buttons {
   display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.demo-group h3 {
+  margin: 0 0 12px;
+  text-align: center;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+.demo-row {
+  display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 12px;

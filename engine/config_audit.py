@@ -378,13 +378,16 @@ def _excluded(dev: ParsedConfig) -> list[tuple[ipaddress.IPv4Address, ipaddress.
 def _check_ip_conflicts(devices: dict[str, ParsedConfig]) -> ValidationCheck:
     name = "no_ip_conflicts"
     owners = defaultdict(list)
+    vips = set()
     for node_id, dev in devices.items():
         for iface_name, iface in dev.addresses:
             owners[iface.ip].append(f"{node_id} {iface_name}")
         for body in dev.blocks.values():
             for line in body:
                 if (m := re.fullmatch(r"standby \d+ ip (\S+)", line)):
-                    owners.setdefault(ipaddress.ip_address(m.group(1)), [])  # shared by design
+                    vips.add(ipaddress.ip_address(m.group(1)))
+    for vip in vips:  # shared by the cores by design, so it counts once
+        owners[vip].append("the HSRP virtual IP")
 
     problems = [f"{ip} is configured on {' and '.join(who)}" for ip, who in sorted(owners.items()) if len(who) > 1]
 

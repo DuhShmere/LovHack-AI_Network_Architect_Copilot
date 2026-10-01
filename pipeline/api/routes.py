@@ -17,7 +17,7 @@ from pipeline.llm_layer import (
 from engine.generator import PlanGenerationError, generate_plan
 from engine.validator import validate_plan
 from engine.config_gen import generate_configs
-from engine.demo import SabotageError, SabotageInfo, list_sabotages, sabotage_plan
+from engine.demo import SabotageError, SabotageInfo, break_design, list_sabotages
 from engine.simulator import ResilienceReport, SimulationError, SimulationReport, resilience, simulate
 from engine.bom import BillOfMaterials, bill_of_materials
 from engine.plan_diff import diff_plans
@@ -144,13 +144,13 @@ def demo_sabotages(req: PlanRequest) -> list[SabotageInfo]:
 
 @router.post("/demo/break", response_model=BreakResponse)
 def demo_break(req: BreakRequest) -> BreakResponse:
-    """Break a valid plan one named way and re-validate, to show the
-    validator catching it live."""
+    """Break a valid plan (or the configs generated from it) one named way
+    and re-validate, to show the validator catching it live."""
     try:
-        broken, what_changed = sabotage_plan(req.plan, req.sabotage)
+        broken, what_changed, validation = break_design(req.plan, req.sabotage)
     except SabotageError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    return BreakResponse(plan=broken, what_changed=what_changed, validation=validate_plan(broken))
+    return BreakResponse(plan=broken, what_changed=what_changed, validation=validation)
 
 
 class SimulateRequest(BaseModel):

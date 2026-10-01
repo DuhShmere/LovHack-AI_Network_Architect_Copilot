@@ -17,7 +17,7 @@ import ipaddress
 import itertools
 from collections import defaultdict, deque
 
-from shared.schema import NetworkPlan, ValidationReport, ValidationCheck, RedundancyLevel, VLANAllocation
+from shared.schema import DeviceConfig, NetworkPlan, ValidationReport, ValidationCheck, RedundancyLevel, VLANAllocation
 from engine.taxonomy import normalize_segment
 from engine.config_gen import generate_configs
 from engine.config_audit import audit_configs
@@ -31,7 +31,25 @@ RESERVED_VLAN_IDS = {1, 1002, 1003, 1004, 1005}  # default + legacy FDDI/Token R
 
 
 def validate_plan(plan: NetworkPlan) -> ValidationReport:
-    checks = [
+    # Only a sound design gets configs, so only a sound design gets its
+    # configs audited -- and a broken one keeps exactly the checks it failed.
+    checks = _design_checks(plan)
+    if all(c.passed for c in checks):
+        checks += audit_generated_configs(plan)
+    return ValidationReport(overall_pass=all(c.passed for c in checks), checks=checks)
+
+
+def validate_deployment(plan: NetworkPlan, configs: list[DeviceConfig]) -> ValidationReport:
+    """Like validate_plan, but audits the configs given (e.g. hand-edited
+    ones) instead of freshly generated ones."""
+    checks = _design_checks(plan)
+    if all(c.passed for c in checks):
+        checks += audit_configs(plan, configs)
+    return ValidationReport(overall_pass=all(c.passed for c in checks), checks=checks)
+
+
+def _design_checks(plan: NetworkPlan) -> list[ValidationCheck]:
+    return [
         check_valid_ranges(plan),
         check_no_subnet_overlap(plan),
         check_valid_vlan_ids(plan),
@@ -41,11 +59,6 @@ def validate_plan(plan: NetworkPlan) -> ValidationReport:
         check_redundancy_present(plan),
         check_guest_isolation(plan),
     ]
-    # Only a sound design gets configs, so only a sound design gets its
-    # configs audited -- and a broken one keeps exactly the checks it failed.
-    if all(c.passed for c in checks):
-        checks += audit_generated_configs(plan)
-    return ValidationReport(overall_pass=all(c.passed for c in checks), checks=checks)
 
 
 def audit_generated_configs(plan: NetworkPlan) -> list[ValidationCheck]:
@@ -250,7 +263,8 @@ def check_redundancy_present(plan: NetworkPlan) -> ValidationCheck:
     if level == RedundancyLevel.dual_wan_plus_switch_redundancy:
         cores = set(node_ids_of_type(plan, "core_switch"))
         adj = _adjacency(plan)
-        single_homed = [a for a in node_ids_of_type(plan, "access_switch") if len(adj[a] & cores) < 2]
+        # 0 core uplinks is a disconnected switch, which topology_connected reports.
+        single_homed = [a for a in node_ids_of_type(plan, "access_switch") if len(adj[a] & cores) == 1]
         if len(cores) < 2:
             problems.append(f"switch redundancy requires 2 core switches, found {len(cores)}")
         elif single_homed:

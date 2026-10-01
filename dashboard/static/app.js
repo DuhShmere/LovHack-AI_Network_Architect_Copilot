@@ -189,11 +189,26 @@ async function loadSabotages(plan) {
     if (sabotages.length === 0) return;
 
     demoButtons.innerHTML = "";
-    for (const s of sabotages) {
-      const btn = document.createElement("button");
-      btn.textContent = s.label;
-      btn.addEventListener("click", () => breakPlan(s.key));
-      demoButtons.appendChild(btn);
+    const groups = [
+      ["design", "Break the design"],
+      ["config", "Break the configs (the design stays valid)"],
+    ];
+    for (const [kind, title] of groups) {
+      const items = sabotages.filter((s) => (s.kind || "design") === kind);
+      if (items.length === 0) continue;
+      const group = document.createElement("div");
+      group.className = "demo-group";
+      group.appendChild(document.createElement("h3")).textContent = title;
+      const row = group.appendChild(document.createElement("div"));
+      row.className = "demo-row";
+      for (const s of items) {
+        const btn = document.createElement("button");
+        btn.textContent = s.label;
+        btn.title = `Should be caught by: ${s.target_check}`;
+        btn.addEventListener("click", () => breakPlan(s.key));
+        row.appendChild(btn);
+      }
+      demoButtons.appendChild(group);
     }
     demoPanel.hidden = false;
   } catch {

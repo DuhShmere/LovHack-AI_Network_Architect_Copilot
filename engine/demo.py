@@ -8,17 +8,24 @@ Owner: Nyles. Pure engine/ -- the API/dashboard only needs:
 
 Each sabotage targets exactly one validator check (target_check), so the
 demo can say "we broke X, and check Y caught it".
+
+Design sabotages break the plan itself. Config sabotages leave the plan
+sound and instead tamper with the configs generated from it -- the kind
+of slip a hand edit makes -- so the config audit has to catch them.
+break_design() runs either kind and re-validates.
 """
 
 import ipaddress
+import re
 from dataclasses import dataclass
 from typing import Callable
 
 from pydantic import BaseModel
 
-from shared.schema import NetworkPlan, RedundancyLevel, TopologyLink
+from shared.schema import DeviceConfig, NetworkPlan, RedundancyLevel, TopologyLink, ValidationReport
 from engine.taxonomy import normalize_segment
-from engine.validator import node_ids_of_type
+from engine.config_gen import generate_configs
+from engine.validator import node_ids_of_type, validate_deployment, validate_plan
 
 
 class SabotageError(ValueError):
@@ -29,6 +36,7 @@ class SabotageInfo(BaseModel):
     key: str
     label: str
     target_check: str
+    kind: str = "design"  # "design" (breaks the plan) or "config" (tampers with its configs)
 
 
 @dataclass(frozen=True)
@@ -39,19 +47,47 @@ class _Sabotage:
     apply: Callable[[NetworkPlan], str]  # mutates the copy, returns what changed
 
 
+@dataclass(frozen=True)
+class _ConfigSabotage:
+    label: str
+    target_check: str
+    applies: Callable[[NetworkPlan], bool]
+    apply: Callable[[dict[str, str], NetworkPlan], str]  # edits node_id -> config text, returns what changed
+
+
 def list_sabotages(plan: NetworkPlan) -> list[SabotageInfo]:
     return [
         SabotageInfo(key=key, label=s.label, target_check=s.target_check)
         for key, s in _SABOTAGES.items()
         if s.applies(plan)
+    ] + [
+        SabotageInfo(key=key, label=s.label, target_check=s.target_check, kind="config")
+        for key, s in _CONFIG_SABOTAGES.items()
+        if s.applies(plan)
     ]
+
+
+def break_design(plan: NetworkPlan, key: str) -> tuple[NetworkPlan, str, ValidationReport]:
+    """Run either kind of sabotage. Returns (the plan as broken -- unchanged
+    for a config sabotage, what changed, the validation report)."""
+    sabotage = _CONFIG_SABOTAGES.get(key)
+    if sabotage is None:
+        broken, what = sabotage_plan(plan, key)
+        return broken, what, validate_plan(broken)
+    if not sabotage.applies(plan):
+        raise SabotageError(f"Sabotage '{key}' doesn't apply to this plan")
+    texts = {c.node_id: c.config_text for c in generate_configs(plan)}
+    what = sabotage.apply(texts, plan)
+    configs = [DeviceConfig(node_id=k, config_text=v) for k, v in texts.items()]
+    return plan, what, validate_deployment(plan, configs)
 
 
 def sabotage_plan(plan: NetworkPlan, key: str) -> tuple[NetworkPlan, str]:
     """Return (broken copy of plan, one-sentence description of the change)."""
     sabotage = _SABOTAGES.get(key)
     if sabotage is None:
-        raise SabotageError(f"Unknown sabotage '{key}'. Options: {', '.join(_SABOTAGES)}")
+        options = ", ".join([*_SABOTAGES, *_CONFIG_SABOTAGES])
+        raise SabotageError(f"Unknown sabotage '{key}'. Options: {options}")
     if not sabotage.applies(plan):
         raise SabotageError(f"Sabotage '{key}' doesn't apply to this plan")
     broken = plan.model_copy(deep=True)
@@ -203,5 +239,102 @@ _SABOTAGES: dict[str, _Sabotage] = {
         lambda p: p.spec.guest_wifi_isolated
         and bool(node_ids_of_type(p, "router")) and bool(node_ids_of_type(p, "core_switch")),
         _firewall_bypass,
+    ),
+}
+
+
+# ---------------------------------------------------------------------------
+# Config sabotages -- one per config audit check
+# ---------------------------------------------------------------------------
+
+def _edit_block(text: str, header: str, edit: Callable[[str], str | None]) -> str:
+    """Rewrite the body lines of the config block starting at header:
+    edit(line) returns the replacement line, or None to delete it."""
+    out, inside = [], False
+    for line in text.split("\n"):
+        if not line.startswith(" "):
+            inside = line == header
+        elif inside:
+            line = edit(line)
+            if line is None:
+                continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def _block_value(text: str, header: str, pattern: str) -> str:
+    """The first group of pattern matched against a body line of header's block."""
+    found = []
+    _edit_block(text, header, lambda l: found.append(m.group(1)) or l if (m := re.fullmatch(pattern, l)) else l)
+    return found[0]
+
+
+def _strip_guest_acl(texts, plan):
+    core = node_ids_of_type(plan, "core_switch")[0]
+    guest = _vlan(plan, "guest")
+    texts[core] = _edit_block(
+        texts[core], f"interface Vlan{guest.vlan_id}",
+        lambda l: None if l == " ip access-group GUEST-ISOLATION in" else l,
+    )
+    return (
+        f"Deleted 'ip access-group GUEST-ISOLATION in' from {core}'s guest VLAN {guest.vlan_id} "
+        f"interface: the isolation ACL still exists, but nothing applies it."
+    )
+
+
+def _wrong_dhcp_gateway(texts, plan):
+    core = node_ids_of_type(plan, "core_switch")[0]
+    old = _block_value(texts[core], "ip dhcp pool STAFF", r" default-router (\S+)")
+    new = ipaddress.ip_address(old) + 5
+    texts[core] = _edit_block(
+        texts[core], "ip dhcp pool STAFF",
+        lambda l: f" default-router {new}" if l == f" default-router {old}" else l,
+    )
+    return f"Pointed {core}'s staff DHCP pool at gateway {new} instead of {old}: every staff device would get a dead gateway."
+
+
+def _duplicate_ip(texts, plan):
+    access = node_ids_of_type(plan, "access_switch")[0]
+    svi = f"interface Vlan{_vlan(plan, 'management').vlan_id}"
+    own, mask = _block_value(texts[access], svi, r" ip address (\S+ \S+)").split()
+    gateway = re.search(r"^ip default-gateway (\S+)$", texts[access], re.M).group(1)
+    texts[access] = _edit_block(
+        texts[access], svi,
+        lambda l: f" ip address {gateway} {mask}" if l == f" ip address {own} {mask}" else l,
+    )
+    return f"Gave {access}'s management interface {gateway} instead of {own}: that's the management gateway's address."
+
+
+def _drop_return_route(texts, plan):
+    firewall = node_ids_of_type(plan, "firewall")[0]
+    staff = ipaddress.ip_network(_vlan(plan, "staff").subnet_cidr)
+    prefix = f"ip route {staff.network_address} {staff.netmask} "
+    texts[firewall] = "\n".join(l for l in texts[firewall].split("\n") if not l.startswith(prefix))
+    return (
+        f"Deleted {firewall}'s route back to the staff subnet {staff}: replies to staff fall through "
+        f"to the default route and loop back out."
+    )
+
+
+_CONFIG_SABOTAGES: dict[str, _ConfigSabotage] = {
+    "strip_guest_acl": _ConfigSabotage(
+        "Forget to apply the guest ACL", "guest_isolation_enforced",
+        lambda p: p.spec.guest_wifi_isolated and _has(p, "guest") and bool(node_ids_of_type(p, "core_switch")),
+        _strip_guest_acl,
+    ),
+    "wrong_dhcp_gateway": _ConfigSabotage(
+        "Typo in the DHCP gateway", "gateways_consistent",
+        lambda p: _has(p, "staff") and bool(node_ids_of_type(p, "core_switch")),
+        _wrong_dhcp_gateway,
+    ),
+    "duplicate_ip": _ConfigSabotage(
+        "Reuse an IP address", "no_ip_conflicts",
+        lambda p: _has(p, "management") and bool(node_ids_of_type(p, "access_switch")),
+        _duplicate_ip,
+    ),
+    "drop_return_route": _ConfigSabotage(
+        "Delete a firewall return route", "routing_complete",
+        lambda p: _has(p, "staff") and bool(node_ids_of_type(p, "firewall")),
+        _drop_return_route,
     ),
 }
