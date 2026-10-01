@@ -144,3 +144,37 @@ def test_raises_requirement_service_error_immediately_on_auth_failure(mock_clien
     with pytest.raises(RequirementServiceError):
         parse_requirements("50-person office")
     assert mock_client.messages.create.call_count == 1
+
+
+@patch("pipeline.llm_layer.client")
+def test_assumptions_are_parsed(mock_client):
+    mock_client.messages.create.return_value = _fake_response(
+        VALID_SPEC_JSON.replace('"raw_notes": null', '"raw_notes": null, "assumptions": ["50 users = 45 staff + 5 contractors"]')
+    )
+    spec = parse_requirements("45 staff and 5 contractors")
+    assert spec.assumptions == ["50 users = 45 staff + 5 contractors"]
+
+
+@patch("pipeline.llm_layer.client")
+def test_missing_assumptions_default_to_empty(mock_client):
+    mock_client.messages.create.return_value = _fake_response(VALID_SPEC_JSON)
+    assert parse_requirements("50-person office").assumptions == []
+
+
+@patch("pipeline.llm_layer.client")
+def test_refusal_is_retried_then_raises_parse_error(mock_client):
+    response = _fake_response(VALID_SPEC_JSON)
+    response.stop_reason = "refusal"
+    mock_client.messages.create.return_value = response
+    with pytest.raises(RequirementParseError, match="declined"):
+        parse_requirements("50-person office")
+    assert mock_client.messages.create.call_count == 2
+
+
+@patch("pipeline.llm_layer.client")
+def test_truncated_response_is_retried(mock_client):
+    cut_off = _fake_response(VALID_SPEC_JSON[:40])
+    cut_off.stop_reason = "max_tokens"
+    mock_client.messages.create.side_effect = [cut_off, _fake_response(VALID_SPEC_JSON)]
+    assert parse_requirements("50-person office").user_count > 0
+    assert mock_client.messages.create.call_count == 2

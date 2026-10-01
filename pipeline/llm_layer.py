@@ -3,6 +3,9 @@ LLM layer: plain-English requirements -> structured NetworkSpec.
 
 Owner: Samir. Day 2 task. Works standalone against the Anthropic API
 without depending on engine/ at all.
+
+Also: refine_requirements() applies a plain-English change to an existing
+spec, and explain_design() answers questions about a finished design.
 """
 
 import json
@@ -12,7 +15,7 @@ import anthropic
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
-from shared.schema import NetworkSpec
+from shared.schema import FullResult, NetworkSpec
 
 load_dotenv()
 
@@ -32,12 +35,43 @@ Respond ONLY with a JSON object matching this shape, nothing else:
   "department_segments": [string, ...],
   "redundancy": "none" | "dual_wan" | "dual_wan_plus_switch_redundancy",
   "preferred_base_cidr": string or null,
-  "raw_notes": string or null
+  "raw_notes": string or null,
+  "assumptions": [string, ...]
 }
 
 If the description doesn't name the organization, use a short descriptive
 name based on what it is (e.g. "Dental Clinic", "Main Office").
+
+In "assumptions", list each value you inferred, calculated or defaulted
+rather than read directly, with the reasoning in one short sentence, e.g.
+"user_count 264 = 214 employees + 38 contractors + 12 interns; 40 remote
+staff excluded". Use [] if everything was stated outright.
 """
+
+REFINE_SYSTEM_PROMPT = """\
+You update structured network requirements. You are given the current
+requirements as JSON and a requested change in plain English.
+
+Respond ONLY with the complete updated JSON object, in exactly the same
+shape as the input. Change only what the request asks for, plus anything
+it directly implies. In "assumptions", list what you inferred for this
+change, and keep earlier assumptions that still hold.
+"""
+
+EXPLAIN_SYSTEM_PROMPT = """\
+You are a network engineer explaining a network design to the person who
+asked for it. The design was generated and validated by deterministic code.
+You are given its requirements, VLAN plan, topology, validation report and
+the configs of its routing devices (access switch and AP configs are left
+out; they are repetitive port and SSID settings).
+
+Answer the question using only that material, and point to the specific
+VLANs, subnets, devices, config lines or checks involved. If the material
+doesn't answer the question, say so plainly instead of guessing. Plain
+text, under 200 words.
+"""
+
+ROUTING_DEVICE_TYPES = {"router", "firewall", "core_switch"}
 
 # Device configs bake the org name into SSIDs and banners, so it can't be blank.
 DEFAULT_ORG_NAME = "Main Office"
@@ -78,23 +112,56 @@ def _extract_json(text: str) -> str:
     return text[start : end + 1]
 
 
-def _call_model(plain_english: str) -> NetworkSpec:
+def _ask(system: str, content: str, max_tokens: int) -> str:
     response = client.messages.create(
         model=MODEL,
-        max_tokens=1000,
-        system=EXTRACTION_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": plain_english}],
+        max_tokens=max_tokens,
+        system=system,
+        messages=[{"role": "user", "content": content}],
     )
+    if response.stop_reason == "refusal":
+        raise ValueError("model declined the request")
+    if response.stop_reason == "max_tokens":
+        raise ValueError("model response was cut off at max_tokens")
     # content[0] isn't always the text block -- extended thinking, when the
     # model uses it, puts a ThinkingBlock first.
     text_block = next((block for block in response.content if block.type == "text"), None)
     if text_block is None:
         raise ValueError("model response contained no text block")
-    json_text = _extract_json(text_block.text)
-    data = json.loads(json_text)
+    return text_block.text
+
+
+def _spec_from_text(text: str) -> NetworkSpec:
+    data = json.loads(_extract_json(text))
     if not str(data.get("org_name") or "").strip():
         data["org_name"] = DEFAULT_ORG_NAME
     return NetworkSpec(**data)
+
+
+def _call_model(plain_english: str) -> NetworkSpec:
+    return _spec_from_text(_ask(EXTRACTION_SYSTEM_PROMPT, plain_english, max_tokens=4000))
+
+
+def _with_retries(call, what: str):
+    """Run call(), retrying once on a bad model response or a transient API
+    failure. Raises RequirementParseError / RequirementServiceError."""
+    last_error: Exception | None = None
+    for _ in range(2):
+        try:
+            return call()
+        except (json.JSONDecodeError, ValidationError, ValueError, IndexError) as e:
+            last_error = e
+        except _RETRYABLE_API_ERRORS as e:
+            last_error = e
+        except anthropic.APIError as e:
+            raise RequirementServiceError(f"Anthropic API request failed: {e}") from e
+
+    if isinstance(last_error, _RETRYABLE_API_ERRORS):
+        raise RequirementServiceError(
+            f"Anthropic API unavailable after retrying: {last_error}"
+        ) from last_error
+
+    raise RequirementParseError(f"{what} after retrying: {last_error}") from last_error
 
 
 def parse_requirements(plain_english: str) -> NetworkSpec:
@@ -109,22 +176,46 @@ def parse_requirements(plain_english: str) -> NetworkSpec:
     API errors (bad auth, bad request) raise RequirementServiceError
     immediately.
     """
-    last_error: Exception | None = None
-    for _ in range(2):
-        try:
-            return _call_model(plain_english)
-        except (json.JSONDecodeError, ValidationError, ValueError, IndexError) as e:
-            last_error = e
-        except _RETRYABLE_API_ERRORS as e:
-            last_error = e
-        except anthropic.APIError as e:
-            raise RequirementServiceError(f"Anthropic API request failed: {e}") from e
+    return _with_retries(
+        lambda: _call_model(plain_english), "Could not extract a valid NetworkSpec"
+    )
 
-    if isinstance(last_error, _RETRYABLE_API_ERRORS):
-        raise RequirementServiceError(
-            f"Anthropic API unavailable after retrying: {last_error}"
-        ) from last_error
 
-    raise RequirementParseError(
-        f"Could not extract a valid NetworkSpec after retrying: {last_error}"
-    ) from last_error
+def refine_requirements(spec: NetworkSpec, change: str) -> NetworkSpec:
+    """Apply a plain-English change ("make it 150 users") to an existing spec.
+
+    Same retry and error behavior as parse_requirements().
+    """
+    content = (
+        f"Current requirements:\n{spec.model_dump_json(indent=2)}\n\n"
+        f"Requested change:\n{change}"
+    )
+    return _with_retries(
+        lambda: _spec_from_text(_ask(REFINE_SYSTEM_PROMPT, content, max_tokens=4000)),
+        "Could not apply the change to the requirements",
+    )
+
+
+def explain_design(result: FullResult, question: str) -> str:
+    """Answer a question about a finished design, grounded in the design itself.
+
+    Same retry and error behavior as parse_requirements().
+    """
+    routing_ids = {n.node_id for n in result.plan.nodes if n.node_type in ROUTING_DEVICE_TYPES}
+    configs = "\n\n".join(
+        f"--- {c.node_id} ---\n{c.config_text}" for c in result.configs if c.node_id in routing_ids
+    )
+    content = (
+        f"Design (requirements, VLANs, topology):\n{result.plan.model_dump_json(indent=1)}\n\n"
+        f"Validation report:\n{result.validation.model_dump_json(indent=1)}\n\n"
+        f"Routing device configs:\n{configs or '(none generated)'}\n\n"
+        f"Question:\n{question}"
+    )
+
+    def ask() -> str:
+        answer = _ask(EXPLAIN_SYSTEM_PROMPT, content, max_tokens=4000).strip()
+        if not answer:
+            raise ValueError("model returned an empty answer")
+        return answer
+
+    return _with_retries(ask, "Could not get an answer")

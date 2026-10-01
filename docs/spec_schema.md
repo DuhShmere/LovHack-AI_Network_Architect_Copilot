@@ -20,6 +20,7 @@ The structured version of a plain-English request like:
 | redundancy | enum | "none" / "dual_wan" / "dual_wan_plus_switch_redundancy" |
 | preferred_base_cidr | string or null | e.g. "10.0.0.0/16" if specified |
 | raw_notes | string or null | Anything else the LLM couldn't structure |
+| assumptions | list[string] | What the LLM inferred or defaulted rather than read directly (defaults to []; engine ignores it) |
 
 ## 2. NetworkPlan (generator output -> validator + config gen + dashboard input)
 

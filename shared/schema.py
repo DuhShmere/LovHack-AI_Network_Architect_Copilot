@@ -54,6 +54,11 @@ class NetworkSpec(BaseModel):
     # Free-text notes the generator/validator can't structure but a human should see
     raw_notes: Optional[str] = None
 
+    # What the LLM inferred or defaulted rather than read directly, so a human
+    # can check it (e.g. "264 users = 214 staff + 38 contractors + 12 interns").
+    # Informational only: the engine never reads it.
+    assumptions: list[str] = Field(default_factory=list)
+
 
 # ---------------------------------------------------------------------------
 # 2. OUTPUT: what the generator produces from a NetworkSpec.
