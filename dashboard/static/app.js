@@ -81,6 +81,7 @@ form.addEventListener("submit", async (e) => {
     originalResult = body;
     renderResult(body);
     resultsSection.hidden = false;
+    scrollToValidation();
     loadSabotages(body.plan);
   } catch (err) {
     showError(`Request failed: ${err.message}`);
@@ -162,11 +163,16 @@ async function breakPlan(key) {
 
     renderResult({ plan: body.plan, validation: body.validation, configs: [] }, findTargetCheck(body.validation));
     showWhatChanged(body.what_changed);
+    scrollToValidation();
   } catch (err) {
     showError(`Request failed: ${err.message}`);
   } finally {
     buttons.forEach((b) => (b.disabled = false));
   }
+}
+
+function scrollToValidation() {
+  document.getElementById("validation-section").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function findTargetCheck(validation) {

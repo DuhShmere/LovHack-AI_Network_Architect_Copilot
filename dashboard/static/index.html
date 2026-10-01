@@ -4,65 +4,140 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>AI Network Architect Copilot</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
-  <header>
-    <h1>AI Network Architect Copilot</h1>
-    <p class="subtitle">Describe your network in plain English. Get a validated topology, VLAN plan, and device configs.</p>
-  </header>
+  <div class="topbar">
+    <div class="wrap">LovHack Season 3 &mdash; plain-English network design, proven correct before you deploy it.</div>
+  </div>
 
-  <main>
-    <section id="input-panel">
-      <form id="design-form">
+  <nav class="navbar">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M4 6 L16 16 L4 26" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round" />
+          <path d="M16 6 L28 16 L16 26" fill="none" stroke="#2d6a00" stroke-width="4" stroke-linejoin="round" />
+        </svg>
+        <span>Network Architect <em>Copilot</em></span>
+      </a>
+      <div class="nav-links">
+        <a href="#validation-section">Validation</a>
+        <a href="#topology-section">Topology</a>
+        <a href="#vlan-section">Addressing</a>
+        <a href="#configs-section">Configs</a>
+      </div>
+      <a class="pill-btn nav-cta" href="#top">Design a network</a>
+    </div>
+  </nav>
+
+  <header class="hero" id="top">
+    <div class="hero-art" aria-hidden="true">
+      <div class="swirl swirl-1"></div>
+      <div class="swirl swirl-2"></div>
+      <div class="swirl swirl-3"></div>
+      <svg class="chevron" viewBox="0 0 400 600" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="chev" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#3ddc84" />
+            <stop offset="100%" stop-color="#0e8a6a" />
+          </linearGradient>
+        </defs>
+        <path d="M60 0 L360 300 L60 600 L0 600 L300 300 L0 0 Z" fill="url(#chev)" opacity="0.9" />
+      </svg>
+    </div>
+
+    <div class="wrap hero-inner">
+      <h1>Plain English in.<br />A proven network design out.</h1>
+      <p class="hero-sub">
+        Describe the network you need. We generate the topology, VLAN plan, and Cisco-style
+        configs &mdash; then run eight deterministic checks to prove the design is actually correct,
+        not just plausible.
+      </p>
+
+      <form id="design-form" class="hero-form">
         <textarea
           id="description"
           placeholder="e.g. 50-person office, guest wifi isolated, redundant WAN"
           rows="3"
         ></textarea>
         <div class="form-row">
-          <button type="submit" id="submit-btn">Design network</button>
+          <button type="submit" id="submit-btn" class="pill-btn">Design network &rarr;</button>
           <span id="status" class="status" hidden></span>
         </div>
       </form>
       <div id="error-banner" class="error-banner" hidden></div>
+    </div>
+  </header>
+
+  <main id="results" hidden>
+    <section class="band band-white" id="validation-section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Validation report <span id="overall-pass-badge" class="badge"></span></h2>
+          <p class="section-sub">Every check is real code against real invariants &mdash; no second AI guess.</p>
+        </div>
+        <div id="what-changed-banner" class="what-changed-banner" hidden></div>
+        <ul id="validation-list" class="validation-grid"></ul>
+      </div>
     </section>
 
-    <section id="results" hidden>
-      <div class="panel" id="validation-panel">
-        <h2>Validation report <span id="overall-pass-badge" class="badge"></span></h2>
-        <div id="what-changed-banner" class="what-changed-banner" hidden></div>
-        <ul id="validation-list" class="validation-list"></ul>
-      </div>
-
-      <div class="panel" id="demo-panel" hidden>
-        <h2>Break it (demo)</h2>
-        <p class="panel-note">Sabotage the design one way and watch the validator catch it.</p>
+    <section class="band band-gray" id="demo-panel" hidden>
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Break it</h2>
+          <p class="section-sub">Sabotage the design one way and watch the validator catch it.</p>
+        </div>
         <div id="demo-buttons" class="demo-buttons"></div>
       </div>
+    </section>
 
-      <div class="panel" id="topology-panel">
-        <h2>Topology</h2>
-        <div id="topology-svg-container"></div>
+    <section class="band band-white" id="topology-section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Topology</h2>
+          <p class="section-sub">Scaled to your user count, with redundancy where you asked for it.</p>
+        </div>
+        <div class="card">
+          <div id="topology-svg-container"></div>
+        </div>
       </div>
+    </section>
 
-      <div class="panel" id="vlan-panel">
-        <h2>VLAN / IP allocation</h2>
-        <table id="vlan-table">
-          <thead>
-            <tr><th>VLAN</th><th>Name</th><th>Subnet</th><th>Purpose</th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+    <section class="band band-gray" id="vlan-section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>VLAN &amp; IP allocation</h2>
+          <p class="section-sub">Non-overlapping, RFC1918, sized for every user plus a gateway.</p>
+        </div>
+        <div class="card table-card">
+          <table id="vlan-table">
+            <thead>
+              <tr><th>VLAN</th><th>Name</th><th>Subnet</th><th>Purpose</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
+    </section>
 
-      <div class="panel" id="configs-panel">
-        <h2>Device configs</h2>
-        <div id="configs-list" class="configs-list"></div>
+    <section class="band band-white" id="configs-section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Device configs</h2>
+          <p class="section-sub">Cisco IOS-style config for every device you own &mdash; only generated when validation passes.</p>
+        </div>
+        <div id="configs-list" class="configs-grid"></div>
       </div>
     </section>
   </main>
 
-  <script src="app.js"></script>
+  <footer class="footer">
+    <div class="wrap">AI Network Architect Copilot &middot; Built by Samir &amp; Nyles for LovHack Season 3</div>
+  </footer>
+
+  <script src="app.js?v=3"></script>
 </body>
 </html>
