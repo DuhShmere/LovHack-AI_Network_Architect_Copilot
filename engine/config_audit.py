@@ -35,7 +35,7 @@ MAX_HOPS = 16
 
 
 def audit_configs(plan: NetworkPlan, configs: list[DeviceConfig]) -> list[ValidationCheck]:
-    devices = {c.node_id: _parse(c.config_text) for c in configs}
+    devices = {c.node_id: parse_config(c.config_text) for c in configs}
     checks = [
         ("guest_isolation_enforced", lambda: _check_guest_isolation(plan, devices)),
         ("gateways_consistent", lambda: _check_gateways(plan, devices)),
@@ -78,15 +78,19 @@ class _AclEntry:
 class _Route:
     prefix: ipaddress.IPv4Network
     next_hop: str  # an address, or "dhcp" (the ISP's gateway)
+    distance: int = 1
+    track: int | None = None  # only installed while this track object is up
 
 
 @dataclass
-class _Device:
+class ParsedConfig:
     blocks: dict[str, list[str]] = field(default_factory=lambda: defaultdict(list))
     globals: list[str] = field(default_factory=list)
     acls: dict[str, list[_AclEntry]] = field(default_factory=dict)
     routes: list[_Route] = field(default_factory=list)
     addresses: list[tuple[str, ipaddress.IPv4Interface]] = field(default_factory=list)  # (interface, addr)
+    sla_targets: dict[int, ipaddress.IPv4Address] = field(default_factory=dict)  # ip sla id -> probed address
+    tracks: dict[int, int] = field(default_factory=dict)  # track id -> ip sla id
 
     def interface_body(self, name: str) -> list[str]:
         return self.blocks.get(f"interface {name}", [])
@@ -94,9 +98,23 @@ class _Device:
     def connected(self, addr) -> bool:
         return any(addr in iface.network for _, iface in self.addresses)
 
+    def inbound_acl(self, iface: str) -> str | None:
+        return next(
+            (m.group(1) for line in self.interface_body(iface)
+             if (m := re.fullmatch(r"ip access-group (\S+) in", line))),
+            None,
+        )
 
-def _parse(text: str) -> _Device:
-    dev = _Device()
+    def hsrp_priority(self, iface: str) -> int:
+        return next(
+            (int(m.group(1)) for line in self.interface_body(iface)
+             if (m := re.fullmatch(r"standby \d+ priority (\d+)", line))),
+            100,
+        )
+
+
+def parse_config(text: str) -> ParsedConfig:
+    dev = ParsedConfig()
     header = None
     for raw in text.splitlines():
         line = raw.rstrip()
@@ -129,13 +147,28 @@ def _parse(text: str) -> _Device:
                 e for e in (_parse_ace(line, m.group(1) == "standard") for line in body) if e
             ]
 
+        m = re.fullmatch(r"ip sla (\d+)", header)
+        if m:
+            for line in body:
+                if (probe := re.fullmatch(r"icmp-echo (\S+).*", line)):
+                    try:
+                        dev.sla_targets[int(m.group(1))] = ipaddress.ip_address(probe.group(1))
+                    except ValueError:
+                        pass
+
     for line in dev.globals:
-        m = re.fullmatch(r"ip route (\S+) (\S+) (\S+)(?: \d+)?", line)
+        m = re.fullmatch(r"ip route (\S+) (\S+) (\S+)(?: (\d+))?(?: track (\d+))?", line)
         if m:
             try:
-                dev.routes.append(_Route(_net(m.group(1), m.group(2)), m.group(3)))
+                dev.routes.append(_Route(
+                    _net(m.group(1), m.group(2)), m.group(3),
+                    distance=int(m.group(4) or 1),
+                    track=int(m.group(5)) if m.group(5) else None,
+                ))
             except ValueError:
                 pass
+        if (t := re.fullmatch(r"track (\d+) ip sla (\d+) reachability", line)):
+            dev.tracks[int(t.group(1))] = int(t.group(2))
     return dev
 
 
@@ -198,7 +231,7 @@ def acl_verdict(entries: list[_AclEntry], src, dst) -> str:
 # Checks
 # ---------------------------------------------------------------------------
 
-def _check_guest_isolation(plan: NetworkPlan, devices: dict[str, _Device]) -> ValidationCheck | None:
+def _check_guest_isolation(plan: NetworkPlan, devices: dict[str, ParsedConfig]) -> ValidationCheck | None:
     name = "guest_isolation_enforced"
     if not plan.spec.guest_wifi_isolated:
         return None
@@ -224,11 +257,7 @@ def _check_guest_isolation(plan: NetworkPlan, devices: dict[str, _Device]) -> Va
     problems, acl_names = [], set()
     for node_id, iface_name in gateways:
         dev = devices[node_id]
-        acl_name = next(
-            (m.group(1) for line in dev.interface_body(iface_name)
-             if (m := re.fullmatch(r"ip access-group (\S+) in", line))),
-            None,
-        )
+        acl_name = dev.inbound_acl(iface_name)
         where = f"{node_id} {iface_name}"
         if acl_name is None:
             problems.append(f"{where} routes guest traffic with no inbound ACL")
@@ -255,7 +284,7 @@ def _check_guest_isolation(plan: NetworkPlan, devices: dict[str, _Device]) -> Va
     )
 
 
-def _check_gateways(plan: NetworkPlan, devices: dict[str, _Device]) -> ValidationCheck:
+def _check_gateways(plan: NetworkPlan, devices: dict[str, ParsedConfig]) -> ValidationCheck:
     name = "gateways_consistent"
     cores = [n.node_id for n in plan.nodes if n.node_type == "core_switch"]
     pools = _dhcp_pools(devices)
@@ -319,7 +348,7 @@ def _check_gateways(plan: NetworkPlan, devices: dict[str, _Device]) -> Validatio
     )
 
 
-def _dhcp_pools(devices: dict[str, _Device]) -> list[tuple[str, dict]]:
+def _dhcp_pools(devices: dict[str, ParsedConfig]) -> list[tuple[str, dict]]:
     pools = []
     for node_id, dev in devices.items():
         for header, body in dev.blocks.items():
@@ -336,7 +365,7 @@ def _dhcp_pools(devices: dict[str, _Device]) -> list[tuple[str, dict]]:
     return pools
 
 
-def _excluded(dev: _Device) -> list[tuple[ipaddress.IPv4Address, ipaddress.IPv4Address]]:
+def _excluded(dev: ParsedConfig) -> list[tuple[ipaddress.IPv4Address, ipaddress.IPv4Address]]:
     ranges = []
     for line in dev.globals:
         m = re.fullmatch(r"ip dhcp excluded-address (\S+)(?: (\S+))?", line)
@@ -346,7 +375,7 @@ def _excluded(dev: _Device) -> list[tuple[ipaddress.IPv4Address, ipaddress.IPv4A
     return ranges
 
 
-def _check_ip_conflicts(devices: dict[str, _Device]) -> ValidationCheck:
+def _check_ip_conflicts(devices: dict[str, ParsedConfig]) -> ValidationCheck:
     name = "no_ip_conflicts"
     owners = defaultdict(list)
     for node_id, dev in devices.items():
@@ -390,7 +419,7 @@ def _check_ip_conflicts(devices: dict[str, _Device]) -> ValidationCheck:
     )
 
 
-def _check_routing(plan: NetworkPlan, devices: dict[str, _Device]) -> ValidationCheck:
+def _check_routing(plan: NetworkPlan, devices: dict[str, ParsedConfig]) -> ValidationCheck:
     name = "routing_complete"
     cores = [n.node_id for n in plan.nodes if n.node_type == "core_switch" and n.node_id in devices]
     routers = [n.node_id for n in plan.nodes if n.node_type == "router" and n.node_id in devices]

@@ -26,6 +26,10 @@ ACCESS_SWITCH_PORTS = 48
 L3_NODE_TYPES = {"router", "firewall", "core_switch"}
 TRANSIT_CANDIDATES = ["10.255.255.0/24", "172.31.255.0/24", "192.168.255.0/24"]
 HSRP_GROUP = 1
+SLA_ID = 1
+# Probed only to track the primary WAN path; Quad9, so it isn't a DNS server
+# the DHCP pools hand out (traffic to it is pinned to the primary path).
+SLA_PROBE_TARGET = "9.9.9.9"
 
 
 def generate_configs(plan: NetworkPlan) -> list[DeviceConfig]:
@@ -236,9 +240,24 @@ def _render_firewall(node, ctx: _Context) -> str:
         for core in cores:
             lines.append(f"ip route {_mask(ctx.nets[v.vlan_id])} {ctx.uplink_ip(me, core)}")
     # Primary default via router1, floating backup via router2 (dual WAN).
+    # A floating static only takes over when router1's link drops, not when
+    # ISP A dies behind a healthy router1 -- so with a backup, the primary
+    # route is tracked by an IP SLA probe pinned to the primary path.
+    if len(routers) > 1:
+        primary_port = ctx.ports[(me, routers[0])]
+        lines += [
+            f"ip sla {SLA_ID}",
+            f" icmp-echo {SLA_PROBE_TARGET} source-interface {primary_port}",
+            " frequency 10",
+            "!",
+            f"ip sla schedule {SLA_ID} life forever start-time now",
+            f"track {SLA_ID} ip sla {SLA_ID} reachability",
+            "!",
+            f"ip route {SLA_PROBE_TARGET} 255.255.255.255 {ctx.uplink_ip(me, routers[0])}",
+        ]
     for i, router in enumerate(routers):
-        distance = "" if i == 0 else f" {10 * i}"
-        lines.append(f"ip route 0.0.0.0 0.0.0.0 {ctx.uplink_ip(me, router)}{distance}")
+        suffix = f" track {SLA_ID}" if i == 0 and len(routers) > 1 else "" if i == 0 else f" {10 * i}"
+        lines.append(f"ip route 0.0.0.0 0.0.0.0 {ctx.uplink_ip(me, router)}{suffix}")
     lines += ["!"]
 
     # Only return traffic from outside; anything from inside may go out.
