@@ -1,13 +1,13 @@
 const LAYER_ORDER = ["wan_uplink", "router", "firewall", "core_switch", "access_switch", "ap"];
 
 const NODE_COLORS = {
-  wan_uplink: "#5a6478",
-  router: "#5b8cff",
-  firewall: "#ff5d6c",
-  core_switch: "#b57bff",
-  access_switch: "#3ecf8e",
-  ap: "#37c6d0",
-  other: "#8892a8",
+  wan_uplink: "#6b7280",
+  router: "#2d6a00",
+  firewall: "#c23b3b",
+  core_switch: "#1f4d00",
+  access_switch: "#3f7d24",
+  ap: "#b45309",
+  other: "#5b6168",
 };
 
 const form = document.getElementById("design-form");
