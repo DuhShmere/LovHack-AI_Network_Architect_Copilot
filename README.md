@@ -38,7 +38,10 @@ Built for LovHack Season 3 (Sept 26 – Oct 4, 2026).
   `simulator.py` walks traffic through the generated configs (ACLs, routes,
   HSRP, IP SLA tracking, NAT, return path) for a VLAN reachability matrix
   under any set of failed devices, and tries every single-device failure to
-  find single points of failure (today: the lone firewall). `bom.py` prices
+  find single points of failure (a fully redundant design, with its firewall
+  pair, has none). `demo.py` breaks a design -- or just its configs -- one
+  named way for the live demo. `samples.py` holds ready-made specs that
+  skip the LLM (`GET /samples`), for demos with no API access. `bom.py` prices
   the topology with budgetary figures; `plan_diff.py` describes what a
   refinement changed.
 - **`/design` is fully live end-to-end** — plain English in, a real validated

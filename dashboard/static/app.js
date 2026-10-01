@@ -112,10 +112,7 @@ form.addEventListener("submit", async (e) => {
       return;
     }
 
-    document.getElementById("changes-banner").hidden = true;
-    showDesign(body);
-    resultsSection.hidden = false;
-    document.getElementById("requirements-section").scrollIntoView({ behavior: "smooth", block: "start" });
+    presentDesign(body);
   } catch (err) {
     showError(`Request failed: ${err.message}`);
   } finally {
@@ -123,8 +120,58 @@ form.addEventListener("submit", async (e) => {
   }
 });
 
-// A new real design (from /design or /refine): render it and load everything
-// computed from it.
+// A fresh design from the main form or a sample: show it and jump to it.
+function presentDesign(result) {
+  document.getElementById("changes-banner").hidden = true;
+  showDesign(result);
+  resultsSection.hidden = false;
+  document.getElementById("requirements-section").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// Samples run through the real engine but skip the LLM, so the demo works
+// with no API key or network.
+async function loadSampleButtons() {
+  const row = document.getElementById("sample-row");
+  try {
+    const res = await fetch("/samples");
+    if (!res.ok) return;
+    for (const sample of await res.json()) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "chip";
+      btn.textContent = sample.label;
+      btn.addEventListener("click", () => loadSample(sample));
+      row.appendChild(btn);
+    }
+    row.hidden = false;
+  } catch {
+    // Samples are optional.
+  }
+}
+
+async function loadSample(sample) {
+  descriptionInput.value = sample.description;
+  hideError();
+  setLoading(true, "Loading sample…");
+  try {
+    const res = await fetch(`/samples/${encodeURIComponent(sample.key)}`);
+    const body = await res.json();
+    if (!res.ok) {
+      showError(`(${res.status}) ${formatDetail(body.detail)}`);
+      return;
+    }
+    presentDesign(body);
+  } catch (err) {
+    showError(`Request failed: ${err.message}`);
+  } finally {
+    setLoading(false, "");
+  }
+}
+
+loadSampleButtons();
+
+// A new real design (from /design, /refine or a sample): render it and load
+// everything computed from it.
 function showDesign(result) {
   originalResult = result;
   failedDevices = new Set();

@@ -1,58 +1,350 @@
 {
   "plan": {
     "spec": {
-      "org_name": "Acme Dental Office",
-      "user_count": 50,
+      "org_name": "Northwind Veterinary Hospital",
+      "user_count": 90,
       "needs_guest_wifi": true,
       "guest_wifi_isolated": true,
-      "department_segments": ["staff", "guest", "iot"],
-      "redundancy": "dual_wan",
-      "preferred_base_cidr": "10.0.0.0/16",
-      "raw_notes": "50-person office, guest wifi isolated, redundant WAN"
+      "department_segments": [
+        "clinical",
+        "front-desk",
+        "iot"
+      ],
+      "redundancy": "dual_wan_plus_switch_redundancy",
+      "preferred_base_cidr": "10.50.0.0/16",
+      "raw_notes": "Voice QoS for the front desk phones; 802.1X on exam room ports.",
+      "assumptions": [
+        "user_count 90 = 58 full-time + 22 part-time techs + 10 visiting specialists; 6 remote billing staff excluded",
+        "Full redundancy (dual WAN + redundant core switches) from '24/7' and 'no single switch failure'",
+        "Kennel cameras, smart locks and the X-ray machine grouped into one IoT segment"
+      ]
     },
     "vlans": [
-      { "vlan_id": 10, "name": "staff", "subnet_cidr": "10.0.10.0/26", "purpose": "Staff workstations" },
-      { "vlan_id": 20, "name": "guest", "subnet_cidr": "10.0.20.0/26", "purpose": "Isolated guest wifi" },
-      { "vlan_id": 30, "name": "iot", "subnet_cidr": "10.0.30.0/27", "purpose": "IoT devices" },
-      { "vlan_id": 99, "name": "management", "subnet_cidr": "10.0.99.0/28", "purpose": "Device management" }
+      {
+        "vlan_id": 10,
+        "name": "staff",
+        "subnet_cidr": "10.50.10.0/25",
+        "purpose": "Staff workstations"
+      },
+      {
+        "vlan_id": 20,
+        "name": "guest",
+        "subnet_cidr": "10.50.20.0/25",
+        "purpose": "Isolated guest wifi"
+      },
+      {
+        "vlan_id": 30,
+        "name": "iot",
+        "subnet_cidr": "10.50.30.0/26",
+        "purpose": "IoT devices"
+      },
+      {
+        "vlan_id": 99,
+        "name": "management",
+        "subnet_cidr": "10.50.99.0/27",
+        "purpose": "Device management"
+      },
+      {
+        "vlan_id": 100,
+        "name": "clinical",
+        "subnet_cidr": "10.50.100.0/25",
+        "purpose": "Clinical department"
+      },
+      {
+        "vlan_id": 110,
+        "name": "front-desk",
+        "subnet_cidr": "10.50.110.0/25",
+        "purpose": "Front Desk department"
+      }
     ],
     "nodes": [
-      { "node_id": "isp-a", "node_type": "wan_uplink", "label": "ISP Circuit A" },
-      { "node_id": "isp-b", "node_type": "wan_uplink", "label": "ISP Circuit B" },
-      { "node_id": "router1", "node_type": "router", "label": "Edge Router 1" },
-      { "node_id": "router2", "node_type": "router", "label": "Edge Router 2 (redundant)" },
-      { "node_id": "firewall1", "node_type": "firewall", "label": "Perimeter Firewall" },
-      { "node_id": "core1", "node_type": "core_switch", "label": "Core Switch" },
-      { "node_id": "access1", "node_type": "access_switch", "label": "Access Switch - Floor 1" },
-      { "node_id": "ap1", "node_type": "ap", "label": "Wireless AP - Floor 1" }
+      {
+        "node_id": "isp-a",
+        "node_type": "wan_uplink",
+        "label": "ISP Circuit A"
+      },
+      {
+        "node_id": "router1",
+        "node_type": "router",
+        "label": "Edge Router 1"
+      },
+      {
+        "node_id": "isp-b",
+        "node_type": "wan_uplink",
+        "label": "ISP Circuit B"
+      },
+      {
+        "node_id": "router2",
+        "node_type": "router",
+        "label": "Edge Router 2 (redundant)"
+      },
+      {
+        "node_id": "firewall1",
+        "node_type": "firewall",
+        "label": "Perimeter Firewall 1"
+      },
+      {
+        "node_id": "firewall2",
+        "node_type": "firewall",
+        "label": "Perimeter Firewall 2"
+      },
+      {
+        "node_id": "core1",
+        "node_type": "core_switch",
+        "label": "Core Switch 1"
+      },
+      {
+        "node_id": "core2",
+        "node_type": "core_switch",
+        "label": "Core Switch 2"
+      },
+      {
+        "node_id": "access1",
+        "node_type": "access_switch",
+        "label": "Access Switch 1"
+      },
+      {
+        "node_id": "access2",
+        "node_type": "access_switch",
+        "label": "Access Switch 2"
+      },
+      {
+        "node_id": "ap1",
+        "node_type": "ap",
+        "label": "Wireless AP 1"
+      },
+      {
+        "node_id": "ap2",
+        "node_type": "ap",
+        "label": "Wireless AP 2"
+      },
+      {
+        "node_id": "ap3",
+        "node_type": "ap",
+        "label": "Wireless AP 3"
+      },
+      {
+        "node_id": "ap4",
+        "node_type": "ap",
+        "label": "Wireless AP 4"
+      }
     ],
     "links": [
-      { "source_id": "isp-a", "target_id": "router1", "link_type": "wan" },
-      { "source_id": "isp-b", "target_id": "router2", "link_type": "redundant_wan" },
-      { "source_id": "router1", "target_id": "firewall1", "link_type": "trunk" },
-      { "source_id": "router2", "target_id": "firewall1", "link_type": "trunk" },
-      { "source_id": "firewall1", "target_id": "core1", "link_type": "trunk" },
-      { "source_id": "core1", "target_id": "access1", "link_type": "trunk" },
-      { "source_id": "access1", "target_id": "ap1", "link_type": "access" }
+      {
+        "source_id": "isp-a",
+        "target_id": "router1",
+        "link_type": "wan"
+      },
+      {
+        "source_id": "isp-b",
+        "target_id": "router2",
+        "link_type": "redundant_wan"
+      },
+      {
+        "source_id": "router1",
+        "target_id": "firewall1",
+        "link_type": "trunk"
+      },
+      {
+        "source_id": "router2",
+        "target_id": "firewall1",
+        "link_type": "trunk"
+      },
+      {
+        "source_id": "router1",
+        "target_id": "firewall2",
+        "link_type": "trunk"
+      },
+      {
+        "source_id": "router2",
+        "target_id": "firewall2",
+        "link_type": "trunk"
+      },
+      {
+        "source_id": "firewall1",
+        "target_id": "firewall2",
+        "link_type": "failover"
+      },
+      {
+        "source_id": "firewall1",
+        "target_id": "core1",
+        "link_type": "trunk"
+      },
+      {
+        "source_id": "firewall2",
+        "target_id": "core1",
+        "link_type": "trunk"
+      },
+      {
+        "source_id": "firewall1",
+        "target_id": "core2",
+        "link_type": "trunk"
+      },
+      {
+        "source_id": "firewall2",
+        "target_id": "core2",
+        "link_type": "trunk"
+      },
+      {
+        "source_id": "core1",
+        "target_id": "core2",
+        "link_type": "trunk"
+      },
+      {
+        "source_id": "core1",
+        "target_id": "access1",
+        "link_type": "trunk"
+      },
+      {
+        "source_id": "core2",
+        "target_id": "access1",
+        "link_type": "trunk"
+      },
+      {
+        "source_id": "core1",
+        "target_id": "access2",
+        "link_type": "trunk"
+      },
+      {
+        "source_id": "core2",
+        "target_id": "access2",
+        "link_type": "trunk"
+      },
+      {
+        "source_id": "access1",
+        "target_id": "ap1",
+        "link_type": "access"
+      },
+      {
+        "source_id": "access2",
+        "target_id": "ap2",
+        "link_type": "access"
+      },
+      {
+        "source_id": "access1",
+        "target_id": "ap3",
+        "link_type": "access"
+      },
+      {
+        "source_id": "access2",
+        "target_id": "ap4",
+        "link_type": "access"
+      }
     ]
   },
   "validation": {
     "overall_pass": true,
     "checks": [
-      { "check_name": "no_subnet_overlap", "passed": true, "detail": "All 4 VLAN subnets are disjoint." },
-      { "check_name": "valid_ranges", "passed": true, "detail": "All subnets fall within RFC1918 10.0.0.0/8." },
-      { "check_name": "redundancy_present", "passed": true, "detail": "Dual WAN uplinks (isp-a/router1, isp-b/router2) confirmed." },
-      { "check_name": "guest_isolation", "passed": true, "detail": "Guest VLAN 20 has no trunk/link to staff or management VLANs." }
+      {
+        "check_name": "valid_ranges",
+        "passed": true,
+        "detail": "All 6 subnets are valid and within RFC1918 private address space."
+      },
+      {
+        "check_name": "no_subnet_overlap",
+        "passed": true,
+        "detail": "All 6 VLAN subnets are disjoint."
+      },
+      {
+        "check_name": "valid_vlan_ids",
+        "passed": true,
+        "detail": "VLAN IDs [10, 20, 30, 99, 100, 110] are unique and avoid reserved IDs 1 and 1002-1005."
+      },
+      {
+        "check_name": "required_segments_present",
+        "passed": true,
+        "detail": "Every requested segment has its own VLAN (clinical, front-desk, guest, iot)."
+      },
+      {
+        "check_name": "subnet_capacity",
+        "passed": true,
+        "detail": "Room for all 90 users after reserving a gateway: staff 10.50.10.0/25 (125 hosts), guest 10.50.20.0/25 (125 hosts)."
+      },
+      {
+        "check_name": "topology_connected",
+        "passed": true,
+        "detail": "All 14 devices have a path to the WAN over 20 links."
+      },
+      {
+        "check_name": "redundancy_present",
+        "passed": true,
+        "detail": "Confirmed dual WAN (isp-a/router1, isp-b/router2) and 2 core switches with every access switch dual-homed and a 2-firewall pair reaching every core."
+      },
+      {
+        "check_name": "guest_isolation",
+        "passed": true,
+        "detail": "Guest VLAN 20 (10.50.20.0/25) is its own subnet and all WAN-bound traffic passes firewall1, firewall2 -- nothing bypasses it."
+      },
+      {
+        "check_name": "guest_isolation_enforced",
+        "passed": true,
+        "detail": "Evaluated GUEST-ISOLATION rule by rule on core1 Vlan20, core2 Vlan20: guest 10.50.20.0/25 is denied to all 5 internal subnets and 18 infrastructure addresses, and still reaches the internet."
+      },
+      {
+        "check_name": "gateways_consistent",
+        "passed": true,
+        "detail": "All 6 VLANs have one gateway (HSRP virtual IP) that every core SVI, DHCP pool and managed device's default-gateway agrees on."
+      },
+      {
+        "check_name": "no_ip_conflicts",
+        "passed": true,
+        "detail": "All 42 static addresses (including HSRP virtual IPs) are unique, and none of the 5 DHCP pools can lease one of them."
+      },
+      {
+        "check_name": "routing_complete",
+        "passed": true,
+        "detail": "Traced the static routes hop by hop: core1, core2 reach the internet, and router1, router2 route and NAT all 6 VLANs, over every next hop including failover routes."
+      }
     ]
   },
   "configs": [
     {
+      "node_id": "router1",
+      "config_text": "hostname ROUTER1\n!\nbanner motd ^ Northwind Veterinary Hospital -- Edge Router 1. Authorized access only. ^\nno ip domain-lookup\n!\ninterface GigabitEthernet0/0\n description WAN - ISP Circuit A\n ip address dhcp\n ip nat outside\n no shutdown\n!\ninterface GigabitEthernet0/1\n description routed link to firewall1\n ip address 10.255.255.1 255.255.255.252\n ip nat inside\n no shutdown\n!\ninterface GigabitEthernet0/2\n description routed link to firewall2\n ip address 10.255.255.9 255.255.255.252\n ip nat inside\n no shutdown\n!\nip access-list standard NAT-INSIDE\n permit 10.50.10.0 0.0.0.127\n permit 10.50.20.0 0.0.0.127\n permit 10.50.30.0 0.0.0.63\n permit 10.50.99.0 0.0.0.31\n permit 10.50.100.0 0.0.0.127\n permit 10.50.110.0 0.0.0.127\n!\nip nat inside source list NAT-INSIDE interface GigabitEthernet0/0 overload\n!\nip route 0.0.0.0 0.0.0.0 dhcp\nip route 10.50.10.0 255.255.255.128 10.255.255.2\nip route 10.50.20.0 255.255.255.128 10.255.255.2\nip route 10.50.30.0 255.255.255.192 10.255.255.2\nip route 10.50.99.0 255.255.255.224 10.255.255.2\nip route 10.50.100.0 255.255.255.128 10.255.255.2\nip route 10.50.110.0 255.255.255.128 10.255.255.2\nip route 10.50.10.0 255.255.255.128 10.255.255.10 10\nip route 10.50.20.0 255.255.255.128 10.255.255.10 10\nip route 10.50.30.0 255.255.255.192 10.255.255.10 10\nip route 10.50.99.0 255.255.255.224 10.255.255.10 10\nip route 10.50.100.0 255.255.255.128 10.255.255.10 10\nip route 10.50.110.0 255.255.255.128 10.255.255.10 10\n!\nend\n"
+    },
+    {
+      "node_id": "router2",
+      "config_text": "hostname ROUTER2\n!\nbanner motd ^ Northwind Veterinary Hospital -- Edge Router 2 (redundant). Authorized access only. ^\nno ip domain-lookup\n!\ninterface GigabitEthernet0/0\n description WAN - ISP Circuit B\n ip address dhcp\n ip nat outside\n no shutdown\n!\ninterface GigabitEthernet0/1\n description routed link to firewall1\n ip address 10.255.255.5 255.255.255.252\n ip nat inside\n no shutdown\n!\ninterface GigabitEthernet0/2\n description routed link to firewall2\n ip address 10.255.255.13 255.255.255.252\n ip nat inside\n no shutdown\n!\nip access-list standard NAT-INSIDE\n permit 10.50.10.0 0.0.0.127\n permit 10.50.20.0 0.0.0.127\n permit 10.50.30.0 0.0.0.63\n permit 10.50.99.0 0.0.0.31\n permit 10.50.100.0 0.0.0.127\n permit 10.50.110.0 0.0.0.127\n!\nip nat inside source list NAT-INSIDE interface GigabitEthernet0/0 overload\n!\nip route 0.0.0.0 0.0.0.0 dhcp\nip route 10.50.10.0 255.255.255.128 10.255.255.6\nip route 10.50.20.0 255.255.255.128 10.255.255.6\nip route 10.50.30.0 255.255.255.192 10.255.255.6\nip route 10.50.99.0 255.255.255.224 10.255.255.6\nip route 10.50.100.0 255.255.255.128 10.255.255.6\nip route 10.50.110.0 255.255.255.128 10.255.255.6\nip route 10.50.10.0 255.255.255.128 10.255.255.14 10\nip route 10.50.20.0 255.255.255.128 10.255.255.14 10\nip route 10.50.30.0 255.255.255.192 10.255.255.14 10\nip route 10.50.99.0 255.255.255.224 10.255.255.14 10\nip route 10.50.100.0 255.255.255.128 10.255.255.14 10\nip route 10.50.110.0 255.255.255.128 10.255.255.14 10\n!\nend\n"
+    },
+    {
+      "node_id": "firewall1",
+      "config_text": "hostname FIREWALL1\n!\nbanner motd ^ Northwind Veterinary Hospital -- Perimeter Firewall 1. Authorized access only. ^\nno ip domain-lookup\n!\ninterface GigabitEthernet0/0\n description OUTSIDE - routed link to router1\n ip address 10.255.255.2 255.255.255.252\n no shutdown\n!\ninterface GigabitEthernet0/1\n description OUTSIDE - routed link to router2\n ip address 10.255.255.6 255.255.255.252\n no shutdown\n!\ninterface GigabitEthernet0/3\n description INSIDE - routed link to core1\n ip address 10.255.255.21 255.255.255.252\n no shutdown\n!\ninterface GigabitEthernet0/4\n description INSIDE - routed link to core2\n ip address 10.255.255.29 255.255.255.252\n no shutdown\n!\ninterface GigabitEthernet0/2\n description FAILOVER (state sync) - routed link to firewall2\n ip address 10.255.255.17 255.255.255.252\n no shutdown\n!\nip route 10.50.10.0 255.255.255.128 10.255.255.22\nip route 10.50.10.0 255.255.255.128 10.255.255.30\nip route 10.50.20.0 255.255.255.128 10.255.255.22\nip route 10.50.20.0 255.255.255.128 10.255.255.30\nip route 10.50.30.0 255.255.255.192 10.255.255.22\nip route 10.50.30.0 255.255.255.192 10.255.255.30\nip route 10.50.99.0 255.255.255.224 10.255.255.22\nip route 10.50.99.0 255.255.255.224 10.255.255.30\nip route 10.50.100.0 255.255.255.128 10.255.255.22\nip route 10.50.100.0 255.255.255.128 10.255.255.30\nip route 10.50.110.0 255.255.255.128 10.255.255.22\nip route 10.50.110.0 255.255.255.128 10.255.255.30\nip sla 1\n icmp-echo 9.9.9.9 source-interface GigabitEthernet0/0\n frequency 10\n!\nip sla schedule 1 life forever start-time now\ntrack 1 ip sla 1 reachability\n!\nip route 9.9.9.9 255.255.255.255 10.255.255.1\nip route 0.0.0.0 0.0.0.0 10.255.255.1 track 1\nip route 0.0.0.0 0.0.0.0 10.255.255.5 10\n!\nip access-list extended OUTSIDE-IN\n permit tcp any any established\n permit udp any eq domain any\n permit icmp any any echo-reply\n deny ip any any log\n!\ninterface GigabitEthernet0/0\n ip access-group OUTSIDE-IN in\n!\ninterface GigabitEthernet0/1\n ip access-group OUTSIDE-IN in\n!\nend\n"
+    },
+    {
+      "node_id": "firewall2",
+      "config_text": "hostname FIREWALL2\n!\nbanner motd ^ Northwind Veterinary Hospital -- Perimeter Firewall 2. Authorized access only. ^\nno ip domain-lookup\n!\ninterface GigabitEthernet0/0\n description OUTSIDE - routed link to router1\n ip address 10.255.255.10 255.255.255.252\n no shutdown\n!\ninterface GigabitEthernet0/1\n description OUTSIDE - routed link to router2\n ip address 10.255.255.14 255.255.255.252\n no shutdown\n!\ninterface GigabitEthernet0/3\n description INSIDE - routed link to core1\n ip address 10.255.255.25 255.255.255.252\n no shutdown\n!\ninterface GigabitEthernet0/4\n description INSIDE - routed link to core2\n ip address 10.255.255.33 255.255.255.252\n no shutdown\n!\ninterface GigabitEthernet0/2\n description FAILOVER (state sync) - routed link to firewall1\n ip address 10.255.255.18 255.255.255.252\n no shutdown\n!\nip route 10.50.10.0 255.255.255.128 10.255.255.26\nip route 10.50.10.0 255.255.255.128 10.255.255.34\nip route 10.50.20.0 255.255.255.128 10.255.255.26\nip route 10.50.20.0 255.255.255.128 10.255.255.34\nip route 10.50.30.0 255.255.255.192 10.255.255.26\nip route 10.50.30.0 255.255.255.192 10.255.255.34\nip route 10.50.99.0 255.255.255.224 10.255.255.26\nip route 10.50.99.0 255.255.255.224 10.255.255.34\nip route 10.50.100.0 255.255.255.128 10.255.255.26\nip route 10.50.100.0 255.255.255.128 10.255.255.34\nip route 10.50.110.0 255.255.255.128 10.255.255.26\nip route 10.50.110.0 255.255.255.128 10.255.255.34\nip sla 1\n icmp-echo 9.9.9.9 source-interface GigabitEthernet0/0\n frequency 10\n!\nip sla schedule 1 life forever start-time now\ntrack 1 ip sla 1 reachability\n!\nip route 9.9.9.9 255.255.255.255 10.255.255.9\nip route 0.0.0.0 0.0.0.0 10.255.255.9 track 1\nip route 0.0.0.0 0.0.0.0 10.255.255.13 10\n!\nip access-list extended OUTSIDE-IN\n permit tcp any any established\n permit udp any eq domain any\n permit icmp any any echo-reply\n deny ip any any log\n!\ninterface GigabitEthernet0/0\n ip access-group OUTSIDE-IN in\n!\ninterface GigabitEthernet0/1\n ip access-group OUTSIDE-IN in\n!\nend\n"
+    },
+    {
       "node_id": "core1",
-      "config_text": "hostname CORE1\n!\nvlan 10\n name staff\nvlan 20\n name guest\nvlan 30\n name iot\nvlan 99\n name management\n!\ninterface Vlan10\n ip address 10.0.10.1 255.255.255.192\ninterface Vlan20\n ip address 10.0.20.1 255.255.255.192\ninterface Vlan30\n ip address 10.0.30.1 255.255.255.224\ninterface Vlan99\n ip address 10.0.99.1 255.255.255.240\n!\ninterface GigabitEthernet0/1\n description trunk to access1\n switchport mode trunk\n switchport trunk allowed vlan 10,20,30,99\n"
+      "config_text": "hostname CORE1\n!\nbanner motd ^ Northwind Veterinary Hospital -- Core Switch 1. Authorized access only. ^\nno ip domain-lookup\n!\nip routing\n!\nvlan 10\n name STAFF\nvlan 20\n name GUEST\nvlan 30\n name IOT\nvlan 99\n name MANAGEMENT\nvlan 100\n name CLINICAL\nvlan 110\n name FRONT-DESK\n!\ninterface Vlan10\n description Staff workstations\n ip address 10.50.10.2 255.255.255.128\n standby 1 ip 10.50.10.1\n standby 1 priority 110\n standby 1 preempt\n no shutdown\n!\ninterface Vlan20\n description Isolated guest wifi\n ip address 10.50.20.2 255.255.255.128\n standby 1 ip 10.50.20.1\n standby 1 priority 110\n standby 1 preempt\n ip access-group GUEST-ISOLATION in\n no shutdown\n!\ninterface Vlan30\n description IoT devices\n ip address 10.50.30.2 255.255.255.192\n standby 1 ip 10.50.30.1\n standby 1 priority 110\n standby 1 preempt\n no shutdown\n!\ninterface Vlan99\n description Device management\n ip address 10.50.99.2 255.255.255.224\n standby 1 ip 10.50.99.1\n standby 1 priority 110\n standby 1 preempt\n no shutdown\n!\ninterface Vlan100\n description Clinical department\n ip address 10.50.100.2 255.255.255.128\n standby 1 ip 10.50.100.1\n standby 1 priority 110\n standby 1 preempt\n no shutdown\n!\ninterface Vlan110\n description Front Desk department\n ip address 10.50.110.2 255.255.255.128\n standby 1 ip 10.50.110.1\n standby 1 priority 110\n standby 1 preempt\n no shutdown\n!\nip access-list extended GUEST-ISOLATION\n deny ip 10.50.20.0 0.0.0.127 10.50.10.0 0.0.0.127\n deny ip 10.50.20.0 0.0.0.127 10.50.30.0 0.0.0.63\n deny ip 10.50.20.0 0.0.0.127 10.50.99.0 0.0.0.31\n deny ip 10.50.20.0 0.0.0.127 10.50.100.0 0.0.0.127\n deny ip 10.50.20.0 0.0.0.127 10.50.110.0 0.0.0.127\n deny ip 10.50.20.0 0.0.0.127 10.255.255.0 0.0.0.255\n permit ip any any\n!\nip dhcp excluded-address 10.50.10.1 10.50.10.10\nip dhcp pool STAFF\n network 10.50.10.0 255.255.255.128\n default-router 10.50.10.1\n dns-server 1.1.1.1 8.8.8.8\n!\nip dhcp excluded-address 10.50.20.1 10.50.20.10\nip dhcp pool GUEST\n network 10.50.20.0 255.255.255.128\n default-router 10.50.20.1\n dns-server 1.1.1.1 8.8.8.8\n!\nip dhcp excluded-address 10.50.30.1 10.50.30.10\nip dhcp pool IOT\n network 10.50.30.0 255.255.255.192\n default-router 10.50.30.1\n dns-server 1.1.1.1 8.8.8.8\n!\nip dhcp excluded-address 10.50.100.1 10.50.100.10\nip dhcp pool CLINICAL\n network 10.50.100.0 255.255.255.128\n default-router 10.50.100.1\n dns-server 1.1.1.1 8.8.8.8\n!\nip dhcp excluded-address 10.50.110.1 10.50.110.10\nip dhcp pool FRONT-DESK\n network 10.50.110.0 255.255.255.128\n default-router 10.50.110.1\n dns-server 1.1.1.1 8.8.8.8\n!\ninterface GigabitEthernet1/0/1\n description routed link to firewall1\n no switchport\n ip address 10.255.255.22 255.255.255.252\n no shutdown\n!\ninterface GigabitEthernet1/0/2\n description routed link to firewall2\n no switchport\n ip address 10.255.255.26 255.255.255.252\n no shutdown\n!\ninterface GigabitEthernet1/0/3\n description trunk to core2\n switchport mode trunk\n switchport trunk allowed vlan 10,20,30,99,100,110\n no shutdown\n!\ninterface GigabitEthernet1/0/4\n description trunk to access1\n switchport mode trunk\n switchport trunk allowed vlan 10,20,30,99,100,110\n no shutdown\n!\ninterface GigabitEthernet1/0/5\n description trunk to access2\n switchport mode trunk\n switchport trunk allowed vlan 10,20,30,99,100,110\n no shutdown\n!\nip route 0.0.0.0 0.0.0.0 10.255.255.21\nip route 0.0.0.0 0.0.0.0 10.255.255.25 10\n!\nend\n"
+    },
+    {
+      "node_id": "core2",
+      "config_text": "hostname CORE2\n!\nbanner motd ^ Northwind Veterinary Hospital -- Core Switch 2. Authorized access only. ^\nno ip domain-lookup\n!\nip routing\n!\nvlan 10\n name STAFF\nvlan 20\n name GUEST\nvlan 30\n name IOT\nvlan 99\n name MANAGEMENT\nvlan 100\n name CLINICAL\nvlan 110\n name FRONT-DESK\n!\ninterface Vlan10\n description Staff workstations\n ip address 10.50.10.3 255.255.255.128\n standby 1 ip 10.50.10.1\n standby 1 priority 100\n standby 1 preempt\n no shutdown\n!\ninterface Vlan20\n description Isolated guest wifi\n ip address 10.50.20.3 255.255.255.128\n standby 1 ip 10.50.20.1\n standby 1 priority 100\n standby 1 preempt\n ip access-group GUEST-ISOLATION in\n no shutdown\n!\ninterface Vlan30\n description IoT devices\n ip address 10.50.30.3 255.255.255.192\n standby 1 ip 10.50.30.1\n standby 1 priority 100\n standby 1 preempt\n no shutdown\n!\ninterface Vlan99\n description Device management\n ip address 10.50.99.3 255.255.255.224\n standby 1 ip 10.50.99.1\n standby 1 priority 100\n standby 1 preempt\n no shutdown\n!\ninterface Vlan100\n description Clinical department\n ip address 10.50.100.3 255.255.255.128\n standby 1 ip 10.50.100.1\n standby 1 priority 100\n standby 1 preempt\n no shutdown\n!\ninterface Vlan110\n description Front Desk department\n ip address 10.50.110.3 255.255.255.128\n standby 1 ip 10.50.110.1\n standby 1 priority 100\n standby 1 preempt\n no shutdown\n!\nip access-list extended GUEST-ISOLATION\n deny ip 10.50.20.0 0.0.0.127 10.50.10.0 0.0.0.127\n deny ip 10.50.20.0 0.0.0.127 10.50.30.0 0.0.0.63\n deny ip 10.50.20.0 0.0.0.127 10.50.99.0 0.0.0.31\n deny ip 10.50.20.0 0.0.0.127 10.50.100.0 0.0.0.127\n deny ip 10.50.20.0 0.0.0.127 10.50.110.0 0.0.0.127\n deny ip 10.50.20.0 0.0.0.127 10.255.255.0 0.0.0.255\n permit ip any any\n!\ninterface GigabitEthernet1/0/1\n description routed link to firewall1\n no switchport\n ip address 10.255.255.30 255.255.255.252\n no shutdown\n!\ninterface GigabitEthernet1/0/2\n description routed link to firewall2\n no switchport\n ip address 10.255.255.34 255.255.255.252\n no shutdown\n!\ninterface GigabitEthernet1/0/3\n description trunk to core1\n switchport mode trunk\n switchport trunk allowed vlan 10,20,30,99,100,110\n no shutdown\n!\ninterface GigabitEthernet1/0/4\n description trunk to access1\n switchport mode trunk\n switchport trunk allowed vlan 10,20,30,99,100,110\n no shutdown\n!\ninterface GigabitEthernet1/0/5\n description trunk to access2\n switchport mode trunk\n switchport trunk allowed vlan 10,20,30,99,100,110\n no shutdown\n!\nip route 0.0.0.0 0.0.0.0 10.255.255.29\nip route 0.0.0.0 0.0.0.0 10.255.255.33 10\n!\nend\n"
     },
     {
       "node_id": "access1",
-      "config_text": "hostname ACCESS1\n!\ninterface GigabitEthernet0/1\n description uplink to core1\n switchport mode trunk\n switchport trunk allowed vlan 10,20,30,99\n!\ninterface GigabitEthernet0/2\n description AP1 uplink\n switchport mode trunk\n switchport trunk allowed vlan 10,20\n"
+      "config_text": "hostname ACCESS1\n!\nbanner motd ^ Northwind Veterinary Hospital -- Access Switch 1. Authorized access only. ^\nno ip domain-lookup\n!\nvlan 10\n name STAFF\nvlan 20\n name GUEST\nvlan 30\n name IOT\nvlan 99\n name MANAGEMENT\nvlan 100\n name CLINICAL\nvlan 110\n name FRONT-DESK\n!\ninterface GigabitEthernet1/0/1\n description trunk to core1\n switchport mode trunk\n switchport trunk allowed vlan 10,20,30,99,100,110\n no shutdown\n!\ninterface GigabitEthernet1/0/2\n description trunk to core2\n switchport mode trunk\n switchport trunk allowed vlan 10,20,30,99,100,110\n no shutdown\n!\ninterface GigabitEthernet1/0/3\n description trunk to ap1\n switchport mode trunk\n switchport trunk native vlan 99\n switchport trunk allowed vlan 10,20,99\n no shutdown\n!\ninterface GigabitEthernet1/0/4\n description trunk to ap3\n switchport mode trunk\n switchport trunk native vlan 99\n switchport trunk allowed vlan 10,20,99\n no shutdown\n!\ninterface range GigabitEthernet1/0/5-48\n description staff access ports\n switchport mode access\n switchport access vlan 10\n spanning-tree portfast\n spanning-tree bpduguard enable\n no shutdown\n!\ninterface Vlan99\n description management\n ip address 10.50.99.4 255.255.255.224\n no shutdown\n!\nip default-gateway 10.50.99.1\n!\nend\n"
+    },
+    {
+      "node_id": "access2",
+      "config_text": "hostname ACCESS2\n!\nbanner motd ^ Northwind Veterinary Hospital -- Access Switch 2. Authorized access only. ^\nno ip domain-lookup\n!\nvlan 10\n name STAFF\nvlan 20\n name GUEST\nvlan 30\n name IOT\nvlan 99\n name MANAGEMENT\nvlan 100\n name CLINICAL\nvlan 110\n name FRONT-DESK\n!\ninterface GigabitEthernet1/0/1\n description trunk to core1\n switchport mode trunk\n switchport trunk allowed vlan 10,20,30,99,100,110\n no shutdown\n!\ninterface GigabitEthernet1/0/2\n description trunk to core2\n switchport mode trunk\n switchport trunk allowed vlan 10,20,30,99,100,110\n no shutdown\n!\ninterface GigabitEthernet1/0/3\n description trunk to ap2\n switchport mode trunk\n switchport trunk native vlan 99\n switchport trunk allowed vlan 10,20,99\n no shutdown\n!\ninterface GigabitEthernet1/0/4\n description trunk to ap4\n switchport mode trunk\n switchport trunk native vlan 99\n switchport trunk allowed vlan 10,20,99\n no shutdown\n!\ninterface range GigabitEthernet1/0/5-48\n description staff access ports\n switchport mode access\n switchport access vlan 10\n spanning-tree portfast\n spanning-tree bpduguard enable\n no shutdown\n!\ninterface Vlan99\n description management\n ip address 10.50.99.5 255.255.255.224\n no shutdown\n!\nip default-gateway 10.50.99.1\n!\nend\n"
+    },
+    {
+      "node_id": "ap1",
+      "config_text": "hostname AP1\n!\nbanner motd ^ Northwind Veterinary Hospital -- Wireless AP 1. Authorized access only. ^\nno ip domain-lookup\n!\ndot11 ssid NORTHWIND-VETERINARY-HOS-STAFF\n vlan 10\n authentication open\n authentication key-management wpa version 2\n!\ndot11 ssid NORTHWIND-VETERINARY-HOS-GUEST\n vlan 20\n authentication open\n authentication key-management wpa version 2\n guest-mode\n!\ninterface GigabitEthernet0/0\n description uplink to access1\n no shutdown\n!\ninterface BVI1\n ip address 10.50.99.6 255.255.255.224\n!\nip default-gateway 10.50.99.1\n!\nend\n"
+    },
+    {
+      "node_id": "ap2",
+      "config_text": "hostname AP2\n!\nbanner motd ^ Northwind Veterinary Hospital -- Wireless AP 2. Authorized access only. ^\nno ip domain-lookup\n!\ndot11 ssid NORTHWIND-VETERINARY-HOS-STAFF\n vlan 10\n authentication open\n authentication key-management wpa version 2\n!\ndot11 ssid NORTHWIND-VETERINARY-HOS-GUEST\n vlan 20\n authentication open\n authentication key-management wpa version 2\n guest-mode\n!\ninterface GigabitEthernet0/0\n description uplink to access2\n no shutdown\n!\ninterface BVI1\n ip address 10.50.99.7 255.255.255.224\n!\nip default-gateway 10.50.99.1\n!\nend\n"
+    },
+    {
+      "node_id": "ap3",
+      "config_text": "hostname AP3\n!\nbanner motd ^ Northwind Veterinary Hospital -- Wireless AP 3. Authorized access only. ^\nno ip domain-lookup\n!\ndot11 ssid NORTHWIND-VETERINARY-HOS-STAFF\n vlan 10\n authentication open\n authentication key-management wpa version 2\n!\ndot11 ssid NORTHWIND-VETERINARY-HOS-GUEST\n vlan 20\n authentication open\n authentication key-management wpa version 2\n guest-mode\n!\ninterface GigabitEthernet0/0\n description uplink to access1\n no shutdown\n!\ninterface BVI1\n ip address 10.50.99.8 255.255.255.224\n!\nip default-gateway 10.50.99.1\n!\nend\n"
+    },
+    {
+      "node_id": "ap4",
+      "config_text": "hostname AP4\n!\nbanner motd ^ Northwind Veterinary Hospital -- Wireless AP 4. Authorized access only. ^\nno ip domain-lookup\n!\ndot11 ssid NORTHWIND-VETERINARY-HOS-STAFF\n vlan 10\n authentication open\n authentication key-management wpa version 2\n!\ndot11 ssid NORTHWIND-VETERINARY-HOS-GUEST\n vlan 20\n authentication open\n authentication key-management wpa version 2\n guest-mode\n!\ninterface GigabitEthernet0/0\n description uplink to access2\n no shutdown\n!\ninterface BVI1\n ip address 10.50.99.9 255.255.255.224\n!\nip default-gateway 10.50.99.1\n!\nend\n"
     }
   ]
 }

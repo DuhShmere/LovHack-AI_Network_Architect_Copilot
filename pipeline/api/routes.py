@@ -21,6 +21,7 @@ from engine.demo import SabotageError, SabotageInfo, break_design, list_sabotage
 from engine.simulator import ResilienceReport, SimulationError, SimulationReport, resilience, simulate
 from engine.bom import BillOfMaterials, bill_of_materials
 from engine.plan_diff import diff_plans
+from engine.samples import SampleInfo, list_samples, sample_spec
 
 router = APIRouter()
 
@@ -76,6 +77,20 @@ def _design_from_spec(spec: NetworkSpec) -> FullResult:
 @router.post("/design", response_model=FullResult)
 def design_network(req: DesignRequest) -> FullResult:
     return _design_from_spec(_call_llm(parse_requirements, req.description))
+
+
+@router.get("/samples", response_model=list[SampleInfo])
+def samples() -> list[SampleInfo]:
+    """Built-in example designs that skip the LLM -- for demos with no API access."""
+    return list_samples()
+
+
+@router.get("/samples/{key}", response_model=FullResult)
+def sample_design(key: str) -> FullResult:
+    spec = sample_spec(key)
+    if spec is None:
+        raise HTTPException(status_code=404, detail=f"No sample '{key}'")
+    return _design_from_spec(spec)
 
 
 class RefineRequest(BaseModel):

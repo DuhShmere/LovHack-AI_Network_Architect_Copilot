@@ -318,3 +318,27 @@ def test_explain_returns_503_when_llm_service_fails(mock_client):
     mock_client.messages.create.side_effect = [_rate_limit_error(), _rate_limit_error()]
     r = client.post("/explain", json={"result": result, "question": "Why a /26?"})
     assert r.status_code == 503
+
+
+@patch("pipeline.llm_layer.client")
+def test_samples_design_without_the_llm(mock_client):
+    listing = client.get("/samples")
+    assert listing.status_code == 200
+    keys = [s["key"] for s in listing.json()]
+    assert keys
+    for key in keys:
+        r = client.get(f"/samples/{key}")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["validation"]["overall_pass"] is True and body["configs"]
+        assert body["plan"]["spec"]["assumptions"]
+    mock_client.messages.create.assert_not_called()
+
+
+def test_unknown_sample_is_404():
+    assert client.get("/samples/nope").status_code == 404
+
+
+def test_fully_redundant_sample_has_no_single_point_of_failure():
+    plan = client.get("/samples/vet_hospital").json()["plan"]
+    assert client.post("/resilience", json={"plan": plan}).json()["single_points_of_failure"] == []
