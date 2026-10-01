@@ -81,6 +81,16 @@ def test_finds_text_block_after_a_thinking_block(mock_client):
     assert result.org_name == "Acme Dental"
 
 
+@pytest.mark.parametrize("blank", ['""', '"   "', "null"])
+@patch("pipeline.llm_layer.client")
+def test_blank_org_name_falls_back_to_default(mock_client, blank):
+    """A blank org name produced SSIDs like '-STAFF' in the generated configs."""
+    spec_json = VALID_SPEC_JSON.replace('"Acme Dental"', blank)
+    mock_client.messages.create.return_value = _fake_response(spec_json)
+    result = parse_requirements("50-person office")
+    assert result.org_name == "Main Office"
+
+
 @patch("pipeline.llm_layer.client")
 def test_tolerates_surrounding_prose(mock_client):
     mock_client.messages.create.return_value = _fake_response(

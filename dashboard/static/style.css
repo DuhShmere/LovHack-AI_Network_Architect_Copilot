@@ -108,6 +108,21 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 .nav-cta { padding: 12px 22px; font-size: 1rem; white-space: nowrap; }
 
+.outline-btn {
+  background: transparent;
+  color: var(--green);
+  border: 1.5px solid var(--green);
+  padding: 11px 24px;
+  font-size: 1rem;
+}
+.outline-btn:hover:not(:disabled) { background: var(--green); color: #fff; }
+
+.diagram-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+}
+
 /* --- Hero ------------------------------------------------------------------ */
 
 .hero {
@@ -404,7 +419,33 @@ td.mono { font-family: var(--mono); }
   .what-changed-banner { flex-direction: column; align-items: flex-start; }
 }
 
-@media (max-width: 560px) {
+@media (max-width: 860px) {
   .nav-cta { display: none; }
+}
+
+@media (max-width: 560px) {
   .topbar { font-size: 0.78rem; }
+}
+
+/* --- Download diagram (print -> Save as PDF) ------------------------------- */
+
+@media print {
+  @page { margin: 12mm; }
+
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  body { background: #fff; }
+
+  /* Only the diagram goes on the page. */
+  .topbar, .navbar, .hero, .footer,
+  #results > section:not(#topology-section),
+  #topology-section .section-head,
+  .diagram-actions { display: none !important; }
+
+  #topology-section { padding: 0; background: #fff; }
+  .wrap { max-width: none; padding-inline: 0; }
+  #topology-section .card { padding: 0; border: none; background: #fff; }
+  #topology-svg-container { overflow: visible; }
+  /* Fit the whole diagram on one page, however many devices it has. */
+  #topology-svg-container svg { max-width: 100%; max-height: calc(100vh - 2mm); width: auto; height: auto; }
 }

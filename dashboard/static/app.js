@@ -20,6 +20,22 @@ const demoPanel = document.getElementById("demo-panel");
 const demoButtons = document.getElementById("demo-buttons");
 const whatChangedBanner = document.getElementById("what-changed-banner");
 
+// The print stylesheet hides everything except the diagram, so "Save as PDF"
+// in the print dialog yields a one-page diagram.
+document.getElementById("download-diagram-btn").addEventListener("click", () => {
+  // Wide diagrams (many access switches/APs) get a landscape page so they don't shrink.
+  const svg = document.querySelector("#topology-svg-container svg");
+  const wide = svg && Number(svg.getAttribute("width")) > Number(svg.getAttribute("height"));
+  let pageStyle = document.getElementById("diagram-page-size");
+  if (!pageStyle) {
+    pageStyle = document.createElement("style");
+    pageStyle.id = "diagram-page-size";
+    document.head.appendChild(pageStyle);
+  }
+  pageStyle.textContent = `@page { size: ${wide ? "landscape" : "portrait"}; }`;
+  window.print();
+});
+
 let originalResult = null; // the last successful /design response ({plan, validation, configs})
 
 function escapeHtml(str) {

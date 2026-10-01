@@ -34,7 +34,13 @@ Respond ONLY with a JSON object matching this shape, nothing else:
   "preferred_base_cidr": string or null,
   "raw_notes": string or null
 }
+
+If the description doesn't name the organization, use a short descriptive
+name based on what it is (e.g. "Dental Clinic", "Main Office").
 """
+
+# Device configs bake the org name into SSIDs and banners, so it can't be blank.
+DEFAULT_ORG_NAME = "Main Office"
 
 
 class RequirementParseError(Exception):
@@ -86,6 +92,8 @@ def _call_model(plain_english: str) -> NetworkSpec:
         raise ValueError("model response contained no text block")
     json_text = _extract_json(text_block.text)
     data = json.loads(json_text)
+    if not str(data.get("org_name") or "").strip():
+        data["org_name"] = DEFAULT_ORG_NAME
     return NetworkSpec(**data)
 
 
