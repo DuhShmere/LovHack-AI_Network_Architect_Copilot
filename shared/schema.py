@@ -81,7 +81,7 @@ class TopologyNode(BaseModel):
 class TopologyLink(BaseModel):
     source_id: str
     target_id: str
-    link_type: str  # "trunk" | "access" | "wan" | "redundant_wan"
+    link_type: str  # "trunk" | "access" | "wan" | "redundant_wan" | "failover" (firewall pair state link)
 
 
 class NetworkPlan(BaseModel):

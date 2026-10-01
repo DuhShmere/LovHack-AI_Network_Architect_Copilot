@@ -413,6 +413,7 @@ td.mono { font-family: var(--mono); }
 .link-line { stroke: #b9bdc3; stroke-width: 1.5; fill: none; }
 .link-line.redundant_wan, .link-line.wan { stroke: var(--green); }
 .link-line.access { stroke-dasharray: 3 3; }
+.link-line.failover { stroke: #c23b3b; stroke-dasharray: 6 4; }
 
 /* --- Footer ---------------------------------------------------------------- */
 

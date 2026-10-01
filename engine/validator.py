@@ -272,6 +272,16 @@ def check_redundancy_present(plan: NetworkPlan) -> ValidationCheck:
         else:
             details.append(f"{len(cores)} core switches with every access switch dual-homed")
 
+        # ...and a firewall pair, each one cabled to every core.
+        firewalls = set(node_ids_of_type(plan, "firewall"))
+        uncovered = sorted(c for c in cores if len(adj[c] & firewalls) < 2)
+        if len(firewalls) < 2:
+            problems.append(f"full redundancy requires a firewall pair, found {len(firewalls)} firewall(s)")
+        elif uncovered:
+            problems.append(f"core switches not cabled to both firewalls: {', '.join(uncovered)}")
+        else:
+            details.append(f"a {len(firewalls)}-firewall pair reaching every core")
+
     if problems:
         return _check("redundancy_present", False, "; ".join(problems) + ".")
     return _check("redundancy_present", True, "Confirmed " + " and ".join(details) + ".")

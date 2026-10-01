@@ -171,16 +171,24 @@ def _build_topology(spec: NetworkSpec) -> tuple[list[TopologyNode], list[Topolog
         node("router2", "router", "Edge Router 2 (redundant)")
         link("isp-b", "router2", "redundant_wan")
 
-    node("firewall1", "firewall", "Perimeter Firewall")
-    link("router1", "firewall1", "trunk")
-    if dual_wan:
-        link("router2", "firewall1", "trunk")
+    # Firewalls: full redundancy pairs them too (active/standby, sharing
+    # state over a failover link), so the firewall isn't the one device
+    # whose loss takes everyone offline.
+    routers = ["router1", "router2"] if dual_wan else ["router1"]
+    firewalls = ["firewall1", "firewall2"] if dual_core else ["firewall1"]
+    for i, fw_id in enumerate(firewalls, start=1):
+        node(fw_id, "firewall", f"Perimeter Firewall {i}" if dual_core else "Perimeter Firewall")
+        for router_id in routers:
+            link(router_id, fw_id, "trunk")
+    if dual_core:
+        link("firewall1", "firewall2", "failover")
 
     # Core
     cores = ["core1", "core2"] if dual_core else ["core1"]
     for i, core_id in enumerate(cores, start=1):
         node(core_id, "core_switch", f"Core Switch {i}" if dual_core else "Core Switch")
-        link("firewall1", core_id, "trunk")
+        for fw_id in firewalls:
+            link(fw_id, core_id, "trunk")
     if dual_core:
         link("core1", "core2", "trunk")
 

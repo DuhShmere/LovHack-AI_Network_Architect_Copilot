@@ -92,10 +92,29 @@ def test_without_ip_sla_tracking_an_isp_failure_blackholes_traffic(monkeypatch):
     assert not f.allowed and "router1" in f.reason and "ISP circuit is down" in f.reason
 
 
-def test_firewall_is_the_only_single_point_of_failure_with_full_redundancy():
+def test_full_redundancy_has_no_single_point_of_failure():
     report = resilience(_plan())
-    assert report.single_points_of_failure == ["firewall1"]
-    assert "firewall1" in report.summary
+    assert report.single_points_of_failure == []
+    assert "No single device failure" in report.summary
+
+
+def test_dual_wan_alone_leaves_the_firewall_and_core_as_single_points_of_failure():
+    report = resilience(_plan(redundancy=RedundancyLevel.dual_wan))
+    assert report.single_points_of_failure == ["firewall1", "core1"]
+
+
+def test_firewall_failure_moves_traffic_to_the_standby_firewall():
+    report = simulate(_plan(), ["firewall1"])
+    for f in report.flows:
+        if f.destination == INTERNET:
+            assert f.allowed and "firewall2" in f.path and "firewall1" not in f.path, f
+    assert "firewall2" in _flow(report, "staff", INTERNET).reason  # replies come back through it too
+
+
+def test_survives_one_failure_in_every_layer_at_once():
+    report = simulate(_plan(), ["isp-a", "firewall1", "core1"])
+    f = _flow(report, "staff", INTERNET)
+    assert f.allowed and {"isp-b", "firewall2", "core2"} <= set(f.path), f
 
 
 def test_without_redundancy_the_whole_edge_is_a_single_point_of_failure():

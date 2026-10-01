@@ -133,6 +133,12 @@ class _Context:
         return [v for v in self.vlans if v.name != "management"]
 
 
+def _floating(index: int) -> str:
+    """Administrative distance suffix: the first path is primary, later
+    ones only take over when it's gone."""
+    return "" if index == 0 else f" {10 * index}"
+
+
 def _mask(net) -> str:
     return f"{net.network_address} {net.netmask}"
 
@@ -212,16 +218,16 @@ def _render_router(node, ctx: _Context) -> str:
             lines += _routed_iface(me, peer, ctx, [" ip nat inside"])
 
     wan_ports = [ctx.ports[(me, p)] for p in ctx.neighbors_of_type(me, "wan_uplink")]
-    firewall = next(iter(ctx.neighbors_of_type(me, "firewall")), None)
     lines += ["ip access-list standard NAT-INSIDE"]
     lines += [f" permit {_wild(ctx.nets[v.vlan_id])}" for v in ctx.vlans]
     lines += ["!"]
     if wan_ports:
         lines += [f"ip nat inside source list NAT-INSIDE interface {wan_ports[0]} overload", "!"]
         lines += ["ip route 0.0.0.0 0.0.0.0 dhcp"]
-    if firewall:
-        next_hop = ctx.uplink_ip(me, firewall)
-        lines += [f"ip route {_mask(ctx.nets[v.vlan_id])} {next_hop}" for v in ctx.vlans]
+    # Return routes via the active firewall; floating ones via the standby.
+    for i, firewall in enumerate(ctx.neighbors_of_type(me, "firewall")):
+        next_hop, suffix = ctx.uplink_ip(me, firewall), _floating(i)
+        lines += [f"ip route {_mask(ctx.nets[v.vlan_id])} {next_hop}{suffix}" for v in ctx.vlans]
     return _finish(lines + ["!"])
 
 
@@ -234,6 +240,8 @@ def _render_firewall(node, ctx: _Context) -> str:
         lines += _routed_iface(me, peer, ctx, label="OUTSIDE")
     for peer in cores:
         lines += _routed_iface(me, peer, ctx, label="INSIDE")
+    for peer in ctx.neighbors_of_type(me, "firewall"):
+        lines += _routed_iface(me, peer, ctx, label="FAILOVER (state sync)")
 
     # Internal subnets live behind the core(s); ECMP across both if dual.
     for v in ctx.vlans:
@@ -256,7 +264,7 @@ def _render_firewall(node, ctx: _Context) -> str:
             f"ip route {SLA_PROBE_TARGET} 255.255.255.255 {ctx.uplink_ip(me, routers[0])}",
         ]
     for i, router in enumerate(routers):
-        suffix = f" track {SLA_ID}" if i == 0 and len(routers) > 1 else "" if i == 0 else f" {10 * i}"
+        suffix = f" track {SLA_ID}" if i == 0 and len(routers) > 1 else _floating(i)
         lines.append(f"ip route 0.0.0.0 0.0.0.0 {ctx.uplink_ip(me, router)}{suffix}")
     lines += ["!"]
 
@@ -331,8 +339,9 @@ def _render_core(node, ctx: _Context) -> str:
         elif ctx.types[peer] in ("access_switch", "core_switch"):
             lines += _trunk_iface(me, peer, ctx, ctx.vlans)
 
-    for fw in ctx.neighbors_of_type(me, "firewall"):
-        lines.append(f"ip route 0.0.0.0 0.0.0.0 {ctx.uplink_ip(me, fw)}")
+    # Default via the active firewall; a floating one via the standby.
+    for i, fw in enumerate(ctx.neighbors_of_type(me, "firewall")):
+        lines.append(f"ip route 0.0.0.0 0.0.0.0 {ctx.uplink_ip(me, fw)}{_floating(i)}")
     return _finish(lines + ["!"])
 
 
