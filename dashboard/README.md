@@ -12,23 +12,29 @@ uvicorn pipeline.api.main:app --reload
 
 Then open http://127.0.0.1:8000/ in a browser.
 
-## What it renders, from a call to `POST /design`
+## What it renders
 
-- Input form (free-text description)
-- Validation report (pass/fail per check -- this is the demo moment)
+- Input form (free-text description), plus sample designs that skip the LLM
+  (`GET /samples`) so the demo works with no API key or network
+- What we understood: the parsed spec, the LLM's assumptions, and a box to
+  change the design in plain English (`POST /refine`, with a diff)
+- Validation report (design checks plus the config audit -- the demo moment)
+- Break it: sabotage the design or its configs and watch one check go red
 - Topology diagram (hand-drawn SVG, layered by node type: WAN uplinks ->
-  routers -> firewall -> core switches -> access switches -> APs)
-- VLAN/IP allocation table
-- Config download button per device (skips ISP `wan_uplink` nodes, which
-  don't get a config -- that's the ISP's gear, not ours)
+  routers -> firewalls -> core switches -> access switches -> APs)
+- Simulate: fail devices and see VLAN reachability (`POST /simulate`), plus
+  single points of failure (`POST /resilience`); click a cell to trace its
+  path on the topology
+- VLAN/IP allocation table and bill of materials (`POST /bom`)
+- Config downloads, one device at a time or all as a .zip (skips ISP
+  `wan_uplink` nodes, which don't get a config -- that's the ISP's gear)
+- Ask about this design (`POST /explain`)
 
 ## Files
 
 - `static/index.html` -- markup
 - `static/style.css` -- styling
-- `static/app.js` -- fetches `/design`, renders all four panels, handles the
-  422/503 error paths from the API
-- `fixtures/sample_full_result.json` -- a hand-built `FullResult` from before
-  `engine/` was real. Predates the real engine's output in a few ways (4
-  checks instead of 8, a `/28` management subnet instead of `/27`) -- useful
-  as a schema reference, not as ground truth for what the API returns today.
+- `static/app.js` -- calls the API, renders every panel, handles the
+  422/503 error paths
+- `fixtures/sample_full_result.json` -- the real `/samples/vet_hospital`
+  response (a fully redundant design), as a schema reference

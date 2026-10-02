@@ -141,3 +141,16 @@ def test_generates_for_varied_specs(user_count, redundancy, base):
     _, configs = _build(user_count=user_count, redundancy=redundancy, preferred_base_cidr=base)
     addrs = [ip for text in configs.values() for ip, _ in _ip_addresses(text)]
     assert len(addrs) == len(set(addrs))
+
+
+@pytest.mark.parametrize("redundancy", list(RedundancyLevel))
+def test_primary_wan_route_is_tracked_only_when_there_is_a_backup(redundancy):
+    _, texts = _build(redundancy=redundancy)
+    fw = texts["firewall1"]
+    defaults = re.findall(r"^ip route 0\.0\.0\.0 0\.0\.0\.0 .*$", fw, re.M)
+    if redundancy == RedundancyLevel.none:
+        assert len(defaults) == 1 and "track" not in fw
+    else:
+        assert defaults[0].endswith(" track 1") and defaults[1].endswith(" 10")
+        assert re.search(r"^ip sla 1\n icmp-echo 9\.9\.9\.9 source-interface \S+", fw, re.M)
+        assert "track 1 ip sla 1 reachability" in fw

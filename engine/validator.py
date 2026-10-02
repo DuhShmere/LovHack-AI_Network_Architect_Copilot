@@ -5,6 +5,9 @@ Owner: Nyles. This is the "proof it's real" demo moment -- it runs a fixed
 set of concrete checks and returns pass/fail with reasons, not another
 LLM call.
 
+Once the design checks pass, the configs generated from it are audited
+too (engine/config_audit.py), so the report covers what actually ships.
+
 Every check takes the plan and returns one ValidationCheck. Checks must
 never raise on a malformed plan -- a broken plan should come back as a
 failed report, not a 500.
@@ -14,8 +17,10 @@ import ipaddress
 import itertools
 from collections import defaultdict, deque
 
-from shared.schema import NetworkPlan, ValidationReport, ValidationCheck, RedundancyLevel, VLANAllocation
+from shared.schema import DeviceConfig, NetworkPlan, ValidationReport, ValidationCheck, RedundancyLevel, VLANAllocation
 from engine.taxonomy import normalize_segment
+from engine.config_gen import generate_configs
+from engine.config_audit import audit_configs
 
 RFC1918 = [
     ipaddress.ip_network("10.0.0.0/8"),
@@ -26,7 +31,25 @@ RESERVED_VLAN_IDS = {1, 1002, 1003, 1004, 1005}  # default + legacy FDDI/Token R
 
 
 def validate_plan(plan: NetworkPlan) -> ValidationReport:
-    checks = [
+    # Only a sound design gets configs, so only a sound design gets its
+    # configs audited -- and a broken one keeps exactly the checks it failed.
+    checks = _design_checks(plan)
+    if all(c.passed for c in checks):
+        checks += audit_generated_configs(plan)
+    return ValidationReport(overall_pass=all(c.passed for c in checks), checks=checks)
+
+
+def validate_deployment(plan: NetworkPlan, configs: list[DeviceConfig]) -> ValidationReport:
+    """Like validate_plan, but audits the configs given (e.g. hand-edited
+    ones) instead of freshly generated ones."""
+    checks = _design_checks(plan)
+    if all(c.passed for c in checks):
+        checks += audit_configs(plan, configs)
+    return ValidationReport(overall_pass=all(c.passed for c in checks), checks=checks)
+
+
+def _design_checks(plan: NetworkPlan) -> list[ValidationCheck]:
+    return [
         check_valid_ranges(plan),
         check_no_subnet_overlap(plan),
         check_valid_vlan_ids(plan),
@@ -36,7 +59,14 @@ def validate_plan(plan: NetworkPlan) -> ValidationReport:
         check_redundancy_present(plan),
         check_guest_isolation(plan),
     ]
-    return ValidationReport(overall_pass=all(c.passed for c in checks), checks=checks)
+
+
+def audit_generated_configs(plan: NetworkPlan) -> list[ValidationCheck]:
+    try:
+        configs = generate_configs(plan)
+    except Exception as e:  # never 500 on a plan the generator can't render
+        return [_check("configs_generated", False, f"Config generation failed: {e}")]
+    return audit_configs(plan, configs)
 
 
 # ---------------------------------------------------------------------------
@@ -233,13 +263,24 @@ def check_redundancy_present(plan: NetworkPlan) -> ValidationCheck:
     if level == RedundancyLevel.dual_wan_plus_switch_redundancy:
         cores = set(node_ids_of_type(plan, "core_switch"))
         adj = _adjacency(plan)
-        single_homed = [a for a in node_ids_of_type(plan, "access_switch") if len(adj[a] & cores) < 2]
+        # 0 core uplinks is a disconnected switch, which topology_connected reports.
+        single_homed = [a for a in node_ids_of_type(plan, "access_switch") if len(adj[a] & cores) == 1]
         if len(cores) < 2:
             problems.append(f"switch redundancy requires 2 core switches, found {len(cores)}")
         elif single_homed:
             problems.append(f"access switches with a single core uplink: {', '.join(single_homed)}")
         else:
             details.append(f"{len(cores)} core switches with every access switch dual-homed")
+
+        # ...and a firewall pair, each one cabled to every core.
+        firewalls = set(node_ids_of_type(plan, "firewall"))
+        uncovered = sorted(c for c in cores if len(adj[c] & firewalls) < 2)
+        if len(firewalls) < 2:
+            problems.append(f"full redundancy requires a firewall pair, found {len(firewalls)} firewall(s)")
+        elif uncovered:
+            problems.append(f"core switches not cabled to both firewalls: {', '.join(uncovered)}")
+        else:
+            details.append(f"a {len(firewalls)}-firewall pair reaching every core")
 
     if problems:
         return _check("redundancy_present", False, "; ".join(problems) + ".")

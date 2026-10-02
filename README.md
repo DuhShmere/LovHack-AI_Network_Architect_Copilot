@@ -13,9 +13,14 @@ Built for LovHack Season 3 (Sept 26 – Oct 4, 2026).
   `RequirementParseError`, and separately handles transient API failures
   (rate limits, connection errors, server overload — retried once, then
   `RequirementServiceError`) vs. non-retryable ones (bad auth/request — raised
-  immediately).
+  immediately). The spec now carries `assumptions` (what the LLM inferred
+  rather than read). `refine_requirements()` applies a plain-English change
+  to a spec; `explain_design()` answers questions grounded in a design and
+  its routing configs.
 - **`pipeline/api/routes.py`** — `POST /parse` (LLM extraction only, no
-  `engine/` dependency) and `POST /design` (full pipeline) are wired up.
+  `engine/` dependency) and `POST /design` (full pipeline) are wired up, plus
+  `/refine` (redesign + what changed), `/explain`, `/simulate`, `/resilience`
+  and `/bom`.
   `RequirementParseError` → 422, `RequirementServiceError` → 503,
   `engine.generator.PlanGenerationError` (bad CIDR, 0 users, etc.) → 422.
   Blank/empty `description` is rejected at the request-validation layer.
@@ -26,7 +31,19 @@ Built for LovHack Season 3 (Sept 26 – Oct 4, 2026).
   valid VLAN IDs, required segments present, subnet capacity, topology
   connectivity, redundancy present, guest isolation). `config_gen.py` emits
   Cisco IOS-style config per device (skips ISP `wan_uplink` nodes, and skips
-  all configs if validation fails).
+  all configs if validation fails). Once the design passes, `config_audit.py`
+  re-reads those generated configs and adds up to 4 more checks: guest ACLs
+  evaluated rule by rule, gateway/HSRP/DHCP agreement, no IP conflicts, and
+  static routes traced hop by hop (including failover routes).
+  `simulator.py` walks traffic through the generated configs (ACLs, routes,
+  HSRP, IP SLA tracking, NAT, return path) for a VLAN reachability matrix
+  under any set of failed devices, and tries every single-device failure to
+  find single points of failure (a fully redundant design, with its firewall
+  pair, has none). `demo.py` breaks a design -- or just its configs -- one
+  named way for the live demo. `samples.py` holds ready-made specs that
+  skip the LLM (`GET /samples`), for demos with no API access. `bom.py` prices
+  the topology with budgetary figures; `plan_diff.py` describes what a
+  refinement changed.
 - **`/design` is fully live end-to-end** — plain English in, a real validated
   `FullResult` out.
 - **`pipeline/tests/`** — route-level tests for `/health`, `/parse`, `/design`
@@ -34,11 +51,12 @@ Built for LovHack Season 3 (Sept 26 – Oct 4, 2026).
   LLM), plus mocked unit tests for the LLM layer's retry/error-handling logic
   and JSON extraction (including a regression test for a real bug: extended
   thinking puts a `ThinkingBlock` before the text block in the API response).
-- **`dashboard/`** — not yet scaffolded by ProjectAAL. Build against the real
-  `/design` endpoint now that `engine/` is live (a `dashboard/fixtures/sample_full_result.json`
-  fixture is still there if useful, but it predates the real engine's output —
-  e.g. it has 4 validation checks and a `/28` management subnet; the real
-  engine produces 8 checks and a `/27`).
+- **`dashboard/`** — plain HTML/CSS/JS in `dashboard/static/`, served by
+  FastAPI at `/`. Shows what was understood (with assumptions) and a refine
+  box, the validation report, break-it demo, topology, failure simulator and
+  reachability matrix (click a cell to trace its path on the topology),
+  addressing, bill of materials, configs (one at a time or all as a .zip),
+  and Q&A about the design.
 
 ## Team ownership (this is the whole point of the folder layout)
 

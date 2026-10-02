@@ -205,6 +205,19 @@ textarea:focus { outline: 2px solid var(--green); outline-offset: -1px; border-c
 
 .status { color: var(--text-dim); font-size: 0.95rem; }
 
+.sample-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+.sample-row .chip { padding: 6px 14px; font-size: 0.88rem; }
+
 .error-banner {
   max-width: 640px;
   margin-top: 16px;
@@ -335,6 +348,19 @@ textarea:focus { outline: 2px solid var(--green); outline-offset: -1px; border-c
 
 .demo-buttons {
   display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.demo-group h3 {
+  margin: 0 0 12px;
+  text-align: center;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+.demo-row {
+  display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 12px;
@@ -359,6 +385,9 @@ textarea:focus { outline: 2px solid var(--green); outline-offset: -1px; border-c
   display: flex;
   justify-content: center;
 }
+/* Scale wide diagrams down as a whole; flex alone squeezes only the width
+   and letterboxes the drawing with empty space above and below. */
+#topology-svg-container svg { max-width: 100%; height: auto; }
 
 .table-card { padding: 8px 24px; overflow-x: auto; }
 
@@ -397,6 +426,7 @@ td.mono { font-family: var(--mono); }
 .link-line { stroke: #b9bdc3; stroke-width: 1.5; fill: none; }
 .link-line.redundant_wan, .link-line.wan { stroke: var(--green); }
 .link-line.access { stroke-dasharray: 3 3; }
+.link-line.failover { stroke: #c23b3b; stroke-dasharray: 6 4; }
 
 /* --- Footer ---------------------------------------------------------------- */
 
@@ -406,6 +436,138 @@ td.mono { font-family: var(--mono); }
   font-size: 0.9rem;
   padding-block: 40px;
 }
+
+/* --- Shared bits for the newer sections ------------------------------------ */
+
+.card + .card { margin-top: 24px; }
+.card-title { margin: 0 0 4px; font-size: 1.2rem; }
+.card-sub { margin: 0 0 20px; color: var(--text-dim); font-size: 0.95rem; }
+.status.error { color: var(--fail); }
+.mono { font-family: var(--mono); }
+
+.inline-form {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+.inline-form input {
+  flex: 1;
+  min-width: 0;
+  background: #fff;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 12px 20px;
+  font-family: var(--font);
+  font-size: 1rem;
+}
+.inline-form input:focus { outline: 2px solid var(--green); outline-offset: -1px; border-color: transparent; }
+.inline-form button { padding: 12px 24px; font-size: 1rem; flex-shrink: 0; }
+.inline-form + .status { margin-top: 10px; }
+
+.chip-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.chip {
+  background: #fff;
+  color: var(--text);
+  border: 1.5px solid var(--border);
+  padding: 8px 16px;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+.chip:hover:not(:disabled) { background: var(--green-wash); border-color: var(--green); }
+.chip.spof { border-color: #b45309; }
+.chip.down,
+.chip.down:hover:not(:disabled) { background: var(--fail); border-color: var(--fail); color: #fff; text-decoration: line-through; }
+.chip.reset { background: transparent; border-style: dashed; color: var(--text-dim); }
+
+.badge.warn { background: #b45309; color: #fff; }
+
+/* --- What we understood ---------------------------------------------------- */
+
+.spec-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px 32px;
+  margin: 0;
+}
+.spec-summary dt { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); font-weight: 700; }
+.spec-summary dd { margin: 4px 0 0; font-size: 1.05rem; font-weight: 700; }
+
+.assumptions { margin-top: 28px; border-top: 1px solid var(--border); padding-top: 20px; }
+.assumptions h3 { margin: 0 0 8px; font-size: 1rem; }
+.assumptions ul, .assumptions p { margin: 0; color: var(--text-dim); }
+.assumptions li + li { margin-top: 4px; }
+
+.changes-banner {
+  margin-top: 24px;
+  background: var(--green-wash);
+  border-left: 4px solid var(--green);
+  border-radius: 4px;
+  padding: 16px 20px;
+}
+.changes-banner h3 { margin: 0 0 8px; font-size: 1rem; }
+.changes-banner ul { margin: 0; padding-left: 20px; }
+
+/* --- Simulate -------------------------------------------------------------- */
+
+.sim-summary { margin: 0 0 24px; text-align: center; color: var(--text-dim); }
+.card .sim-summary { margin: 20px 0 0; text-align: left; font-weight: 700; }
+.sim-summary.good { color: var(--green); }
+.sim-summary.bad { color: var(--fail); }
+
+.table-scroll { overflow-x: auto; }
+.matrix { width: auto; margin: 0 auto; }
+.matrix th, .matrix td { padding: 6px 8px; text-align: center; border-bottom: none; }
+.matrix thead th { text-transform: none; letter-spacing: 0; font-size: 0.85rem; white-space: nowrap; }
+.matrix tbody th { text-align: right; font-size: 0.85rem; white-space: nowrap; text-transform: none; letter-spacing: 0; }
+.matrix td.self { color: var(--border); }
+.matrix .cell {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 8px;
+  font-size: 1.05rem;
+}
+.matrix .cell.ok { background: var(--green-wash); color: var(--green); }
+.matrix .cell.blocked { background: var(--fail-wash); color: var(--fail); }
+.matrix .cell.ok:hover:not(:disabled) { background: var(--green); color: #fff; }
+.matrix .cell.blocked:hover:not(:disabled) { background: var(--fail); color: #fff; }
+
+.flow-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 20px 0 0;
+  padding: 14px 18px;
+  border-left: 4px solid var(--green);
+  background: var(--green-wash);
+  border-radius: 4px;
+}
+.flow-detail.blocked { border-color: var(--fail); background: var(--fail-wash); }
+.flow-detail a { color: var(--green); font-size: 0.9rem; }
+
+.link-line.down { stroke: var(--fail); stroke-dasharray: 4 4; opacity: 0.5; }
+.link-line.on-path { stroke: var(--green); stroke-width: 4; }
+.node.failed > g { opacity: 0.3; }
+.node.failed .node-label { fill: var(--fail); text-decoration: line-through; }
+.node.on-path .node-label { fill: var(--green); }
+.failed-x { stroke: var(--fail); stroke-width: 6; stroke-linecap: round; fill: none; }
+
+/* --- Bill of materials / configs / ask ------------------------------------- */
+
+th.num, td.num { text-align: right; }
+.item { font-weight: 700; }
+.item-sub { color: var(--text-dim); font-size: 0.9rem; }
+tfoot th { text-transform: none; letter-spacing: 0; font-size: 1rem; color: var(--text); text-align: right; }
+tfoot td { font-weight: 700; }
+tfoot tr:first-child th, tfoot tr:first-child td { border-top: 2px solid var(--text); }
+.fine-print { margin: 16px 0 0; padding: 0; list-style: none; color: var(--text-dim); font-size: 0.85rem; text-align: center; }
+
+.configs-actions { margin: 0 0 24px; }
+
+.answer { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 20px; }
+.answer p { margin: 0 0 12px; max-width: 72ch; }
+.answer .answer-q { font-weight: 700; }
 
 /* --- Narrow screens -------------------------------------------------------- */
 
@@ -417,6 +579,19 @@ td.mono { font-family: var(--mono); }
   .band { padding-block: 56px; }
   .wrap { padding-inline: 20px; }
   .what-changed-banner { flex-direction: column; align-items: flex-start; }
+  .spec-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Seven nav links plus the CTA don't fit until the page is wide. */
+@media (max-width: 1240px) {
+  .nav-cta { display: none; }
+  .nav-links { gap: 24px; justify-content: flex-end; }
+}
+
+@media (max-width: 560px) {
+  .spec-summary { grid-template-columns: 1fr; }
+  .inline-form { flex-direction: column; }
+  .card { padding: 20px; }
 }
 
 @media (max-width: 860px) {

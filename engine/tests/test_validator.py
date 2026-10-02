@@ -18,6 +18,8 @@ CHECK_NAMES = {
     "redundancy_present",
     "guest_isolation",
 }
+# Run on top of CHECK_NAMES once the design passes (engine/config_audit.py).
+AUDIT_CHECK_NAMES = {"gateways_consistent", "no_ip_conflicts", "routing_complete"}
 
 
 def _plan(**overrides):
@@ -66,7 +68,8 @@ def test_every_generated_plan_passes(user_count, redundancy, guest, base):
     report = validate_plan(plan)
     failures = [f"{c.check_name}: {c.detail}" for c in report.checks if not c.passed]
     assert report.overall_pass, failures
-    assert {c.check_name for c in report.checks} == CHECK_NAMES
+    audits = AUDIT_CHECK_NAMES | ({"guest_isolation_enforced"} if guest else set())
+    assert {c.check_name for c in report.checks} == CHECK_NAMES | audits
 
 
 def test_details_are_specific():
@@ -155,3 +158,18 @@ def test_catches_missing_guest_vlan_when_isolation_required():
 def test_no_redundancy_requested_passes_without_second_wan():
     check, _ = _result(_plan(redundancy=RedundancyLevel.none), "redundancy_present")
     assert check.passed
+
+
+def test_full_redundancy_requires_a_firewall_pair():
+    plan = _plan()
+    plan.nodes = [n for n in plan.nodes if n.node_id != "firewall2"]
+    plan.links = [l for l in plan.links if "firewall2" not in (l.source_id, l.target_id)]
+    check, _ = _result(plan, "redundancy_present")
+    assert not check.passed and "firewall pair" in check.detail
+
+
+def test_full_redundancy_requires_every_core_on_both_firewalls():
+    plan = _plan()
+    plan.links = [l for l in plan.links if {l.source_id, l.target_id} != {"firewall2", "core2"}]
+    check, _ = _result(plan, "redundancy_present")
+    assert not check.passed and "core2" in check.detail
