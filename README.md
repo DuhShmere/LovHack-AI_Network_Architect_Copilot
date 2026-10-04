@@ -50,8 +50,8 @@ plain English ──► Claude ──► NetworkSpec ──► generator ──�
 
 The AI is used for exactly three language tasks: extracting requirements,
 applying a plain-English change, and answering questions about a finished
-design. Every AI response is validated against the schema in
-`shared/schema.py`. Everything after that is deterministic Python: subnet
+design. Requirements come back as JSON the API constrains to a schema, and
+are validated again against the models in `shared/schema.py`. Everything after that is deterministic Python: subnet
 math, graph search, a config parser and a packet-walking simulator.
 
 ## Run it
@@ -103,5 +103,5 @@ calls the real AI skips itself when no API key is set.
   config audit and simulator but haven't been booted on real hardware or in
   an emulator yet.
 - Bill-of-materials prices are budgetary estimates, not quotes.
-- It designs single-site networks from scratch; it doesn't import an
-  existing network.
+- It designs single-site networks of up to 5,000 users from scratch; it
+  doesn't import an existing network.

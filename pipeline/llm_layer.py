@@ -21,7 +21,13 @@ load_dotenv()
 
 client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
-MODEL = "claude-sonnet-5"
+MODEL = "claude-sonnet-5-5"
+# Extraction and Q&A are short, well-specified jobs: medium effort keeps the
+# demo fast without losing the headcount arithmetic.
+EFFORT = "medium"
+# If a safety classifier declines (network-security wording can look like
+# "cyber"), the API retries the same request on a fallback model it picks.
+FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 # Shared by every prompt that returns a spec, so the allowed values (the
 # redundancy enum especially) are always spelled out.
@@ -37,6 +43,35 @@ SPEC_SHAPE = """\
   "raw_notes": string or null,
   "assumptions": [string, ...]
 }"""
+
+_NULLABLE_STRING = {"anyOf": [{"type": "string"}, {"type": "null"}]}
+_SPEC_PROPERTIES = {
+    "org_name": {"type": "string"},
+    "user_count": {"type": "integer"},
+    "needs_guest_wifi": {"type": "boolean"},
+    "guest_wifi_isolated": {"type": "boolean"},
+    "department_segments": {"type": "array", "items": {"type": "string"}},
+    "redundancy": {"type": "string", "enum": ["none", "dual_wan", "dual_wan_plus_switch_redundancy"]},
+    "preferred_base_cidr": _NULLABLE_STRING,
+    "raw_notes": _NULLABLE_STRING,
+    "assumptions": {"type": "array", "items": {"type": "string"}},
+}
+
+
+def _object_schema(properties: dict) -> dict:
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": list(properties),
+        "additionalProperties": False,
+    }
+
+
+# Structured outputs: the API guarantees the reply is JSON matching these,
+# so a malformed or off-schema response can't cost a retry. Extraction adds
+# "not_a_network" (null for real requests) to reject non-network input.
+SPEC_SCHEMA = _object_schema(_SPEC_PROPERTIES)
+EXTRACTION_SCHEMA = _object_schema({"not_a_network": _NULLABLE_STRING, **_SPEC_PROPERTIES})
 
 # Segment names become VLAN names, and Cisco caps those at 32 characters.
 SEGMENT_NAMING = """\
@@ -61,9 +96,10 @@ rather than read directly, with the reasoning in one short sentence, e.g.
 staff excluded". Use [] if everything was stated outright.
 
 Short requests like "50-person office" are fine: default what's missing and
-list it in "assumptions". Only if the text isn't asking for a network at all
-(random words, an unrelated question), respond instead with
-{{"not_a_network": "<one short sentence saying why>"}}.
+list it in "assumptions". Set "not_a_network" to null. Only if the text isn't
+asking for a network at all (random words, an unrelated question), set
+"not_a_network" to one short sentence saying why; the other fields are then
+ignored.
 """
 
 REFINE_SYSTEM_PROMPT = f"""\
@@ -138,12 +174,18 @@ def _extract_json(text: str) -> str:
     return text[start : end + 1]
 
 
-def _ask(system: str, content: str, max_tokens: int) -> str:
-    response = client.messages.create(
+def _ask(system: str, content: str, max_tokens: int, schema: dict | None = None) -> str:
+    output_config = {"effort": EFFORT}
+    if schema is not None:
+        output_config["format"] = {"type": "json_schema", "schema": schema}
+    response = client.beta.messages.create(
         model=MODEL,
         max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": content}],
+        output_config=output_config,
+        betas=[FALLBACK_BETA],
+        fallbacks="default",
     )
     if response.stop_reason == "refusal":
         raise ValueError("model declined the request")
@@ -159,9 +201,10 @@ def _ask(system: str, content: str, max_tokens: int) -> str:
 
 def _spec_from_text(text: str) -> NetworkSpec:
     data = json.loads(_extract_json(text))
-    if "not_a_network" in data:
+    not_a_network = data.pop("not_a_network", None)
+    if not_a_network:
         # Not retried: asking again won't turn "banana" into a network.
-        reason = str(data["not_a_network"]).strip().rstrip(".")
+        reason = str(not_a_network).strip().rstrip(".")
         raise RequirementParseError(
             f"That doesn't look like a network request ({reason}). "
             "Try something like \"50-person office, guest Wi-Fi isolated, two internet providers\"."
@@ -172,7 +215,9 @@ def _spec_from_text(text: str) -> NetworkSpec:
 
 
 def _call_model(plain_english: str) -> NetworkSpec:
-    return _spec_from_text(_ask(EXTRACTION_SYSTEM_PROMPT, plain_english, max_tokens=4000))
+    return _spec_from_text(
+        _ask(EXTRACTION_SYSTEM_PROMPT, plain_english, max_tokens=16000, schema=EXTRACTION_SCHEMA)
+    )
 
 
 def _with_retries(call, what: str):
@@ -229,7 +274,7 @@ def refine_requirements(spec: NetworkSpec, change: str) -> NetworkSpec:
         f"Requested change:\n{change}"
     )
     return _with_retries(
-        lambda: _spec_from_text(_ask(REFINE_SYSTEM_PROMPT, content, max_tokens=4000)),
+        lambda: _spec_from_text(_ask(REFINE_SYSTEM_PROMPT, content, max_tokens=16000, schema=SPEC_SCHEMA)),
         "Could not apply the change to the requirements",
     )
 
@@ -251,7 +296,7 @@ def explain_design(result: FullResult, question: str) -> str:
     )
 
     def ask() -> str:
-        answer = _ask(EXPLAIN_SYSTEM_PROMPT, content, max_tokens=4000).strip()
+        answer = _ask(EXPLAIN_SYSTEM_PROMPT, content, max_tokens=16000).strip()
         if not answer:
             raise ValueError("model returned an empty answer")
         return answer

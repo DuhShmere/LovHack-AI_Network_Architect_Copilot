@@ -55,10 +55,11 @@ no single point of failure"*. In under a minute you get:
 - **Backend:** Python, FastAPI and Pydantic. One shared schema file is the
   contract between the two halves, which let us build in parallel from
   day one.
-- **AI layer:** Claude (Sonnet 5, via the Anthropic API) does exactly three
+- **AI layer:** Claude (Sonnet 5.5, via the Anthropic API) does exactly three
   jobs: extract requirements, apply a plain-English change, and answer
-  questions about a finished design. Every response is validated against the
-  schema, with retries and clean errors when the model or the API misbehaves.
+  questions about a finished design. Structured outputs make the API return
+  JSON matching our schema, which is then validated again, with retries and
+  clean errors when the model or the API misbehaves.
 - **Engine (no AI):** a generator (requirements → VLANs, addressing,
   topology), a validator, a config generator, a config auditor that parses
   the configs back and evaluates them, and a packet-walking simulator.

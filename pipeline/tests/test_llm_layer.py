@@ -61,12 +61,12 @@ def _fake_response(text: str) -> MagicMock:
 
 @patch("pipeline.llm_layer.client")
 def test_strips_json_code_fence(mock_client):
-    mock_client.messages.create.return_value = _fake_response(
+    mock_client.beta.messages.create.return_value = _fake_response(
         f"```json\n{VALID_SPEC_JSON}\n```"
     )
     result = parse_requirements("50-person office")
     assert result.org_name == "Acme Dental"
-    mock_client.messages.create.assert_called_once()
+    mock_client.beta.messages.create.assert_called_once()
 
 
 @patch("pipeline.llm_layer.client")
@@ -76,7 +76,7 @@ def test_finds_text_block_after_a_thinking_block(mock_client):
     thinking_block = MagicMock(type="thinking")
     del thinking_block.text  # ThinkingBlock has no .text attribute
     response.content = [thinking_block, MagicMock(type="text", text=VALID_SPEC_JSON)]
-    mock_client.messages.create.return_value = response
+    mock_client.beta.messages.create.return_value = response
 
     result = parse_requirements("50-person office")
     assert result.org_name == "Acme Dental"
@@ -87,14 +87,14 @@ def test_finds_text_block_after_a_thinking_block(mock_client):
 def test_blank_org_name_falls_back_to_default(mock_client, blank):
     """A blank org name produced SSIDs like '-STAFF' in the generated configs."""
     spec_json = VALID_SPEC_JSON.replace('"Acme Dental"', blank)
-    mock_client.messages.create.return_value = _fake_response(spec_json)
+    mock_client.beta.messages.create.return_value = _fake_response(spec_json)
     result = parse_requirements("50-person office")
     assert result.org_name == "Main Office"
 
 
 @patch("pipeline.llm_layer.client")
 def test_tolerates_surrounding_prose(mock_client):
-    mock_client.messages.create.return_value = _fake_response(
+    mock_client.beta.messages.create.return_value = _fake_response(
         f"Sure, here's the JSON:\n{VALID_SPEC_JSON}\nHope that helps!"
     )
     result = parse_requirements("50-person office")
@@ -103,61 +103,61 @@ def test_tolerates_surrounding_prose(mock_client):
 
 @patch("pipeline.llm_layer.client")
 def test_retries_once_after_malformed_response_then_succeeds(mock_client):
-    mock_client.messages.create.side_effect = [
+    mock_client.beta.messages.create.side_effect = [
         _fake_response("not json at all"),
         _fake_response(VALID_SPEC_JSON),
     ]
     result = parse_requirements("50-person office")
     assert result.org_name == "Acme Dental"
-    assert mock_client.messages.create.call_count == 2
+    assert mock_client.beta.messages.create.call_count == 2
 
 
 @patch("pipeline.llm_layer.client")
 def test_raises_requirement_parse_error_after_repeated_failure(mock_client):
-    mock_client.messages.create.return_value = _fake_response("not json at all")
+    mock_client.beta.messages.create.return_value = _fake_response("not json at all")
     with pytest.raises(RequirementParseError):
         parse_requirements("50-person office")
-    assert mock_client.messages.create.call_count == 2
+    assert mock_client.beta.messages.create.call_count == 2
 
 
 @patch("pipeline.llm_layer.client")
 def test_retries_once_after_rate_limit_then_succeeds(mock_client):
-    mock_client.messages.create.side_effect = [
+    mock_client.beta.messages.create.side_effect = [
         _rate_limit_error(),
         _fake_response(VALID_SPEC_JSON),
     ]
     result = parse_requirements("50-person office")
     assert result.org_name == "Acme Dental"
-    assert mock_client.messages.create.call_count == 2
+    assert mock_client.beta.messages.create.call_count == 2
 
 
 @patch("pipeline.llm_layer.client")
 def test_raises_requirement_service_error_after_repeated_rate_limit(mock_client):
-    mock_client.messages.create.side_effect = [_rate_limit_error(), _rate_limit_error()]
+    mock_client.beta.messages.create.side_effect = [_rate_limit_error(), _rate_limit_error()]
     with pytest.raises(RequirementServiceError):
         parse_requirements("50-person office")
-    assert mock_client.messages.create.call_count == 2
+    assert mock_client.beta.messages.create.call_count == 2
 
 
 @patch("pipeline.llm_layer.client")
 def test_non_network_input_is_rejected_without_retrying(mock_client):
-    mock_client.messages.create.return_value = _fake_response('{"not_a_network": "it names a fruit"}')
+    mock_client.beta.messages.create.return_value = _fake_response('{"not_a_network": "it names a fruit"}')
     with pytest.raises(RequirementParseError, match="doesn't look like a network request"):
         parse_requirements("banana")
-    assert mock_client.messages.create.call_count == 1
+    assert mock_client.beta.messages.create.call_count == 1
 
 
 @patch("pipeline.llm_layer.client")
 def test_raises_requirement_service_error_immediately_on_auth_failure(mock_client):
-    mock_client.messages.create.side_effect = _auth_error()
+    mock_client.beta.messages.create.side_effect = _auth_error()
     with pytest.raises(RequirementServiceError, match="ANTHROPIC_API_KEY"):
         parse_requirements("50-person office")
-    assert mock_client.messages.create.call_count == 1
+    assert mock_client.beta.messages.create.call_count == 1
 
 
 @patch("pipeline.llm_layer.client")
 def test_assumptions_are_parsed(mock_client):
-    mock_client.messages.create.return_value = _fake_response(
+    mock_client.beta.messages.create.return_value = _fake_response(
         VALID_SPEC_JSON.replace('"raw_notes": null', '"raw_notes": null, "assumptions": ["50 users = 45 staff + 5 contractors"]')
     )
     spec = parse_requirements("45 staff and 5 contractors")
@@ -166,7 +166,7 @@ def test_assumptions_are_parsed(mock_client):
 
 @patch("pipeline.llm_layer.client")
 def test_missing_assumptions_default_to_empty(mock_client):
-    mock_client.messages.create.return_value = _fake_response(VALID_SPEC_JSON)
+    mock_client.beta.messages.create.return_value = _fake_response(VALID_SPEC_JSON)
     assert parse_requirements("50-person office").assumptions == []
 
 
@@ -174,16 +174,38 @@ def test_missing_assumptions_default_to_empty(mock_client):
 def test_refusal_is_retried_then_raises_parse_error(mock_client):
     response = _fake_response(VALID_SPEC_JSON)
     response.stop_reason = "refusal"
-    mock_client.messages.create.return_value = response
+    mock_client.beta.messages.create.return_value = response
     with pytest.raises(RequirementParseError, match="declined"):
         parse_requirements("50-person office")
-    assert mock_client.messages.create.call_count == 2
+    assert mock_client.beta.messages.create.call_count == 2
 
 
 @patch("pipeline.llm_layer.client")
 def test_truncated_response_is_retried(mock_client):
     cut_off = _fake_response(VALID_SPEC_JSON[:40])
     cut_off.stop_reason = "max_tokens"
-    mock_client.messages.create.side_effect = [cut_off, _fake_response(VALID_SPEC_JSON)]
+    mock_client.beta.messages.create.side_effect = [cut_off, _fake_response(VALID_SPEC_JSON)]
     assert parse_requirements("50-person office").user_count > 0
-    assert mock_client.messages.create.call_count == 2
+    assert mock_client.beta.messages.create.call_count == 2
+
+
+@patch("pipeline.llm_layer.client")
+def test_extraction_requests_schema_enforced_json_with_fallback(mock_client):
+    mock_client.beta.messages.create.return_value = _fake_response(VALID_SPEC_JSON)
+    parse_requirements("50-person office")
+    kwargs = mock_client.beta.messages.create.call_args.kwargs
+    schema = kwargs["output_config"]["format"]["schema"]
+    assert kwargs["output_config"]["format"]["type"] == "json_schema"
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == set(schema["properties"])
+    assert {"not_a_network", "user_count", "redundancy"} <= set(schema["properties"])
+    assert kwargs["fallbacks"] == "default"
+
+
+@patch("pipeline.llm_layer.client")
+def test_null_not_a_network_is_a_normal_request(mock_client):
+    # Under the schema every reply carries the key; null means "it is a network".
+    mock_client.beta.messages.create.return_value = _fake_response(
+        VALID_SPEC_JSON.replace("{", '{"not_a_network": null,', 1)
+    )
+    assert parse_requirements("50-person office").user_count == 50

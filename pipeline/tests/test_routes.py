@@ -63,7 +63,7 @@ def test_parse_rejects_blank_description(blank_description):
 
 @patch("pipeline.llm_layer.client")
 def test_parse_returns_network_spec_on_success(mock_client):
-    mock_client.messages.create.return_value = _fake_llm_response(VALID_SPEC_JSON)
+    mock_client.beta.messages.create.return_value = _fake_llm_response(VALID_SPEC_JSON)
     r = client.post("/parse", json={"description": "50-person office"})
     assert r.status_code == 200
     assert r.json()["org_name"] == "Acme Dental"
@@ -71,28 +71,28 @@ def test_parse_returns_network_spec_on_success(mock_client):
 
 @patch("pipeline.llm_layer.client")
 def test_parse_returns_422_on_parse_error(mock_client):
-    mock_client.messages.create.return_value = _fake_llm_response("not json at all")
+    mock_client.beta.messages.create.return_value = _fake_llm_response("not json at all")
     r = client.post("/parse", json={"description": "50-person office"})
     assert r.status_code == 422
 
 
 @patch("pipeline.llm_layer.client")
 def test_parse_returns_503_on_service_error(mock_client):
-    mock_client.messages.create.side_effect = _rate_limit_error()
+    mock_client.beta.messages.create.side_effect = _rate_limit_error()
     r = client.post("/parse", json={"description": "50-person office"})
     assert r.status_code == 503
 
 
 @patch("pipeline.llm_layer.client")
 def test_design_returns_422_when_parsing_fails(mock_client):
-    mock_client.messages.create.return_value = _fake_llm_response("not json at all")
+    mock_client.beta.messages.create.return_value = _fake_llm_response("not json at all")
     r = client.post("/design", json={"description": "50-person office"})
     assert r.status_code == 422
 
 
 @patch("pipeline.llm_layer.client")
 def test_design_returns_503_when_llm_service_fails(mock_client):
-    mock_client.messages.create.side_effect = _rate_limit_error()
+    mock_client.beta.messages.create.side_effect = _rate_limit_error()
     r = client.post("/design", json={"description": "50-person office"})
     assert r.status_code == 503
 
@@ -101,7 +101,7 @@ def test_design_returns_503_when_llm_service_fails(mock_client):
 def test_design_returns_real_result_end_to_end(mock_client):
     """Only the LLM is mocked here -- generate_plan/validate_plan/generate_configs
     are the real engine/ implementations."""
-    mock_client.messages.create.return_value = _fake_llm_response(VALID_SPEC_JSON)
+    mock_client.beta.messages.create.return_value = _fake_llm_response(VALID_SPEC_JSON)
     r = client.post("/design", json={"description": "50-person office"})
     assert r.status_code == 200
     body = r.json()
@@ -114,7 +114,7 @@ def test_design_returns_422_on_plan_generation_error(mock_client):
     """engine.generator.PlanGenerationError (e.g. user_count < 1) should
     surface as 422, not an unhandled 500."""
     invalid_spec_json = VALID_SPEC_JSON.replace('"user_count": 50', '"user_count": 0')
-    mock_client.messages.create.return_value = _fake_llm_response(invalid_spec_json)
+    mock_client.beta.messages.create.return_value = _fake_llm_response(invalid_spec_json)
     r = client.post("/design", json={"description": "empty office"})
     assert r.status_code == 422
 
@@ -134,7 +134,7 @@ _FAKE_PLAN = NetworkPlan(
 def test_design_returns_full_result_on_success(
     mock_llm_client, mock_generate_plan, mock_validate_plan, mock_generate_configs
 ):
-    mock_llm_client.messages.create.return_value = _fake_llm_response(VALID_SPEC_JSON)
+    mock_llm_client.beta.messages.create.return_value = _fake_llm_response(VALID_SPEC_JSON)
     mock_generate_plan.return_value = _FAKE_PLAN
     mock_validate_plan.return_value = ValidationReport(
         overall_pass=True,
@@ -155,7 +155,7 @@ def test_design_returns_full_result_on_success(
 def test_design_skips_config_generation_when_validation_fails(
     mock_llm_client, mock_generate_plan, mock_validate_plan, mock_generate_configs
 ):
-    mock_llm_client.messages.create.return_value = _fake_llm_response(VALID_SPEC_JSON)
+    mock_llm_client.beta.messages.create.return_value = _fake_llm_response(VALID_SPEC_JSON)
     mock_generate_plan.return_value = _FAKE_PLAN
     mock_validate_plan.return_value = ValidationReport(
         overall_pass=False,
@@ -172,7 +172,7 @@ def test_design_skips_config_generation_when_validation_fails(
 def _real_plan() -> dict:
     """A real generate_plan() output (dual WAN, isolated guest) via the mocked LLM."""
     with patch("pipeline.llm_layer.client") as mock_client:
-        mock_client.messages.create.return_value = _fake_llm_response(VALID_SPEC_JSON)
+        mock_client.beta.messages.create.return_value = _fake_llm_response(VALID_SPEC_JSON)
         r = client.post("/design", json={"description": "50-person office"})
     assert r.status_code == 200
     return r.json()["plan"]
@@ -229,7 +229,7 @@ def test_demo_break_returns_422_for_inapplicable_sabotage():
 
 def _real_result() -> dict:
     with patch("pipeline.llm_layer.client") as mock_client:
-        mock_client.messages.create.return_value = _fake_llm_response(VALID_SPEC_JSON)
+        mock_client.beta.messages.create.return_value = _fake_llm_response(VALID_SPEC_JSON)
         r = client.post("/design", json={"description": "50-person office"})
     assert r.status_code == 200
     return r.json()
@@ -274,7 +274,7 @@ def test_bom_totals():
 @patch("pipeline.llm_layer.client")
 def test_refine_redesigns_and_reports_changes(mock_client):
     plan = _real_plan()
-    mock_client.messages.create.return_value = _fake_llm_response(
+    mock_client.beta.messages.create.return_value = _fake_llm_response(
         VALID_SPEC_JSON.replace('"user_count": 50', '"user_count": 150')
     )
     r = client.post("/refine", json={"plan": plan, "change": "make it 150 users"})
@@ -282,7 +282,7 @@ def test_refine_redesigns_and_reports_changes(mock_client):
     body = r.json()
     assert body["result"]["plan"]["spec"]["user_count"] == 150
     assert "Users: 50 -> 150" in body["changes"]
-    sent = mock_client.messages.create.call_args.kwargs["messages"][0]["content"]
+    sent = mock_client.beta.messages.create.call_args.kwargs["messages"][0]["content"]
     assert '"user_count": 50' in sent and "make it 150 users" in sent
 
 
@@ -295,7 +295,7 @@ def test_refine_rejects_blank_change(change):
 @patch("pipeline.llm_layer.client")
 def test_refine_returns_422_when_the_change_cant_be_applied(mock_client):
     plan = _real_plan()
-    mock_client.messages.create.return_value = _fake_llm_response("not json")
+    mock_client.beta.messages.create.return_value = _fake_llm_response("not json")
     r = client.post("/refine", json={"plan": plan, "change": "make it better"})
     assert r.status_code == 422
 
@@ -303,11 +303,11 @@ def test_refine_returns_422_when_the_change_cant_be_applied(mock_client):
 @patch("pipeline.llm_layer.client")
 def test_explain_answers_from_the_design(mock_client):
     result = _real_result()
-    mock_client.messages.create.return_value = _fake_llm_response("Guests are blocked by GUEST-ISOLATION on core1.")
+    mock_client.beta.messages.create.return_value = _fake_llm_response("Guests are blocked by GUEST-ISOLATION on core1.")
     r = client.post("/explain", json={"result": result, "question": "Can guests reach staff?"})
     assert r.status_code == 200
     assert "GUEST-ISOLATION" in r.json()["answer"]
-    sent = mock_client.messages.create.call_args.kwargs["messages"][0]["content"]
+    sent = mock_client.beta.messages.create.call_args.kwargs["messages"][0]["content"]
     assert "Can guests reach staff?" in sent
     assert "--- firewall1 ---" in sent and "--- access1 ---" not in sent
 
@@ -315,7 +315,7 @@ def test_explain_answers_from_the_design(mock_client):
 @patch("pipeline.llm_layer.client")
 def test_explain_returns_503_when_llm_service_fails(mock_client):
     result = _real_result()
-    mock_client.messages.create.side_effect = [_rate_limit_error(), _rate_limit_error()]
+    mock_client.beta.messages.create.side_effect = [_rate_limit_error(), _rate_limit_error()]
     r = client.post("/explain", json={"result": result, "question": "Why a /26?"})
     assert r.status_code == 503
 
@@ -332,7 +332,7 @@ def test_samples_design_without_the_llm(mock_client):
         body = r.json()
         assert body["validation"]["overall_pass"] is True and body["configs"]
         assert body["plan"]["spec"]["assumptions"]
-    mock_client.messages.create.assert_not_called()
+    mock_client.beta.messages.create.assert_not_called()
 
 
 def test_unknown_sample_is_404():
