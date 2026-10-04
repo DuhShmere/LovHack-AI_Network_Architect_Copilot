@@ -173,6 +173,11 @@ def _with_retries(call, what: str):
             last_error = e
         except _RETRYABLE_API_ERRORS as e:
             last_error = e
+        except anthropic.AuthenticationError as e:
+            raise RequirementServiceError(
+                "No valid Anthropic API key. Set ANTHROPIC_API_KEY in .env and restart "
+                "the server, or try a sample design, which needs no key."
+            ) from e
         except anthropic.APIError as e:
             raise RequirementServiceError(f"Anthropic API request failed: {e}") from e
 

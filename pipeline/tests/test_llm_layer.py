@@ -29,7 +29,8 @@ def _auth_error() -> anthropic.AuthenticationError:
 
 
 @pytest.mark.skipif(
-    not os.environ.get("ANTHROPIC_API_KEY"), reason="requires a live ANTHROPIC_API_KEY"
+    os.environ.get("ANTHROPIC_API_KEY", "") in ("", "your-key-here"),
+    reason="requires a live ANTHROPIC_API_KEY (.env.example's placeholder doesn't count)",
 )
 def test_parses_basic_office_description():
     result = parse_requirements(
@@ -141,7 +142,7 @@ def test_raises_requirement_service_error_after_repeated_rate_limit(mock_client)
 @patch("pipeline.llm_layer.client")
 def test_raises_requirement_service_error_immediately_on_auth_failure(mock_client):
     mock_client.messages.create.side_effect = _auth_error()
-    with pytest.raises(RequirementServiceError):
+    with pytest.raises(RequirementServiceError, match="ANTHROPIC_API_KEY"):
         parse_requirements("50-person office")
     assert mock_client.messages.create.call_count == 1
 

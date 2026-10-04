@@ -74,13 +74,21 @@ is `shared/schema.py`.
 
 ## Setup
 
+Needs **Python 3.10 or newer** (check with `python3 --version`). The
+`python3` built into macOS is 3.9, which installs fine but crashes on
+startup; get a newer one from [python.org](https://www.python.org/downloads/)
+or with `brew install python`.
+
 ```bash
-python -m venv venv
+python3 -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env            # fill in your Anthropic API key
 uvicorn pipeline.api.main:app --reload
 ```
+
+Then open http://127.0.0.1:8000/. No API key? The **sample design** buttons
+under the input box run the full engine without one.
 
 ## Git workflow
 
