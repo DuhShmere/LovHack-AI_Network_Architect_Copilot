@@ -90,6 +90,7 @@ class ParsedConfig:
     routes: list[_Route] = field(default_factory=list)
     addresses: list[tuple[str, ipaddress.IPv4Interface]] = field(default_factory=list)  # (interface, addr)
     sla_targets: dict[int, ipaddress.IPv4Address] = field(default_factory=dict)  # ip sla id -> probed address
+    sla_sources: dict[int, str] = field(default_factory=dict)  # ip sla id -> source interface
     tracks: dict[int, int] = field(default_factory=dict)  # track id -> ip sla id
 
     def interface_body(self, name: str) -> list[str]:
@@ -150,11 +151,13 @@ def parse_config(text: str) -> ParsedConfig:
         m = re.fullmatch(r"ip sla (\d+)", header)
         if m:
             for line in body:
-                if (probe := re.fullmatch(r"icmp-echo (\S+).*", line)):
+                if (probe := re.fullmatch(r"icmp-echo (\S+)(?: source-interface (\S+))?.*", line)):
                     try:
                         dev.sla_targets[int(m.group(1))] = ipaddress.ip_address(probe.group(1))
                     except ValueError:
-                        pass
+                        continue
+                    if probe.group(2):
+                        dev.sla_sources[int(m.group(1))] = probe.group(2)
 
     for line in dev.globals:
         m = re.fullmatch(r"ip route (\S+) (\S+) (\S+)(?: (\d+))?(?: track (\d+))?", line)

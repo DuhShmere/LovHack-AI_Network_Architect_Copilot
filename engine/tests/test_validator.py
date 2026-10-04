@@ -141,6 +141,18 @@ def test_catches_single_homed_access_switch():
     assert not check.passed and "access1" in check.detail
 
 
+def test_catches_access_switch_daisy_chained_off_another():
+    """Zero core uplinks but still online through another access switch: it
+    reaches the WAN, so topology_connected passes, and it isn't dual-homed."""
+    plan = _plan()
+    core_uplinks = [{"core1", "access2"}, {"core2", "access2"}]
+    plan.links = [l for l in plan.links if {l.source_id, l.target_id} not in core_uplinks]
+    plan.links.append(TopologyLink(source_id="access1", target_id="access2", link_type="trunk"))
+    check, report = _result(plan, "redundancy_present")
+    assert not check.passed and "access2" in check.detail
+    assert next(c for c in report.checks if c.check_name == "topology_connected").passed
+
+
 def test_catches_firewall_bypass():
     plan = _plan()
     plan.links.append(TopologyLink(source_id="router1", target_id="core1", link_type="trunk"))

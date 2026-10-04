@@ -92,6 +92,30 @@ def test_without_ip_sla_tracking_an_isp_failure_blackholes_traffic(monkeypatch):
     assert not f.allowed and "router1" in f.reason and "ISP circuit is down" in f.reason
 
 
+@pytest.mark.parametrize("redundancy", [
+    RedundancyLevel.dual_wan, RedundancyLevel.dual_wan_plus_switch_redundancy,
+])
+def test_healthy_dual_wan_network_uses_the_primary_isp(redundancy):
+    f = _flow(simulate(_plan(redundancy=redundancy)), "staff", INTERNET)
+    assert f.allowed and f.path[-2:] == ["isp-a", INTERNET], f
+
+
+def test_ip_sla_probe_that_router1_doesnt_nat_drops_the_primary_route(monkeypatch):
+    # The firewalls probe from their transit address; if router1 won't NAT it,
+    # the probe gets no reply, track 1 goes down and everything uses ISP B.
+    real = simulator.generate_configs
+
+    def no_transit_nat(plan):
+        configs = real(plan)
+        for c in configs:
+            c.config_text = c.config_text.replace(" permit 10.255.255.0 0.0.0.255\n", "")
+        return configs
+
+    monkeypatch.setattr(simulator, "generate_configs", no_transit_nat)
+    f = _flow(simulate(_plan()), "staff", INTERNET)
+    assert f.allowed and f.path[-2:] == ["isp-b", INTERNET], f
+
+
 def test_full_redundancy_has_no_single_point_of_failure():
     report = resilience(_plan())
     assert report.single_points_of_failure == []
