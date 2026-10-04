@@ -316,4 +316,18 @@ class _Network:
         if not self._access_serving(path[-1]):
             return FlowResult(source=src, destination=dst, allowed=False, path=path,
                               reason=f"{path[-1]} can't reach the {dst} hosts")
+
+        # Replies need a way back too: the ACLs are stateless, so one that
+        # drops them (the guest ACL does) means no connection can complete.
+        dst_core, _, why = self._gateway(dst_vlan)
+        if dst_core is None:
+            return FlowResult(source=src, destination=dst, allowed=False, path=path,
+                              reason=f"replies can't get back: {why}")
+        back_ok, back_path, back_reason, _ = self._walk(
+            dst_core, f"Vlan{dst_vlan.vlan_id}", src_net.broadcast_address - 1, src_net, dst_net,
+        )
+        if not back_ok or not self._access_serving(back_path[-1]):
+            why = back_reason if not back_ok else f"{back_path[-1]} can't reach the {src} hosts"
+            return FlowResult(source=src, destination=dst, allowed=False, path=path,
+                              reason=f"replies can't get back: {why}")
         return FlowResult(source=src, destination=dst, allowed=True, path=path + [dst], reason="delivered")

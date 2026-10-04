@@ -40,21 +40,29 @@ def test_healthy_network_reaches_the_internet_from_every_vlan(users, redundancy,
     assert report.stranded == []
 
 
-def test_guest_is_blocked_from_every_internal_vlan_but_others_are_routed():
+def test_guest_is_isolated_both_ways_but_others_are_routed():
+    # Into guest is blocked too: the guest ACL drops the replies, so no
+    # connection from an internal VLAN to a guest host can complete.
     report = simulate(_plan())
     for f in report.flows:
         if f.destination == INTERNET:
             continue
-        if f.source == "guest":
+        if "guest" in (f.source, f.destination):
             assert not f.allowed and "GUEST-ISOLATION" in f.reason, f
         else:
             assert f.allowed, f
             assert f.path[-1] == f.destination
 
 
+def test_into_guest_is_blocked_because_replies_cant_get_back():
+    f = _flow(simulate(_plan()), "staff", "guest")
+    assert not f.allowed and f.reason.startswith("replies can't get back"), f
+
+
 def test_guest_without_isolation_is_routed():
     report = simulate(_plan(guest_wifi_isolated=False))
     assert _flow(report, "guest", "staff").allowed
+    assert _flow(report, "staff", "guest").allowed
 
 
 def test_flow_paths_walk_the_topology():

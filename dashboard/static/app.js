@@ -737,6 +737,9 @@ function renderFailureButtons(nodes) {
 let simulationRun = 0; // ignore responses from clicks that have been superseded
 
 async function runSimulation() {
+  // The simulator runs on the original design, so stop showing a sabotaged
+  // copy; otherwise its healthy results sit next to a FAIL badge.
+  if (shownPlan !== originalResult.plan) restoreOriginal();
   const run = ++simulationRun;
   const plan = originalResult.plan;
   const summary = document.getElementById("simulation-summary");

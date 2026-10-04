@@ -59,6 +59,11 @@ In "assumptions", list each value you inferred, calculated or defaulted
 rather than read directly, with the reasoning in one short sentence, e.g.
 "user_count 264 = 214 employees + 38 contractors + 12 interns; 40 remote
 staff excluded". Use [] if everything was stated outright.
+
+Short requests like "50-person office" are fine: default what's missing and
+list it in "assumptions". Only if the text isn't asking for a network at all
+(random words, an unrelated question), respond instead with
+{{"not_a_network": "<one short sentence saying why>"}}.
 """
 
 REFINE_SYSTEM_PROMPT = f"""\
@@ -87,8 +92,9 @@ out; they are repetitive port and SSID settings).
 
 Answer the question using only that material, and point to the specific
 VLANs, subnets, devices, config lines or checks involved. If the material
-doesn't answer the question, say so plainly instead of guessing. Plain
-text, under 200 words.
+doesn't answer the question, say so plainly instead of guessing. Under 200
+words of plain text: the page shows it as-is, so no Markdown (no **bold**,
+no # headings); separate paragraphs with a blank line.
 """
 
 ROUTING_DEVICE_TYPES = {"router", "firewall", "core_switch"}
@@ -153,6 +159,13 @@ def _ask(system: str, content: str, max_tokens: int) -> str:
 
 def _spec_from_text(text: str) -> NetworkSpec:
     data = json.loads(_extract_json(text))
+    if "not_a_network" in data:
+        # Not retried: asking again won't turn "banana" into a network.
+        reason = str(data["not_a_network"]).strip().rstrip(".")
+        raise RequirementParseError(
+            f"That doesn't look like a network request ({reason}). "
+            "Try something like \"50-person office, guest Wi-Fi isolated, two internet providers\"."
+        )
     if not str(data.get("org_name") or "").strip():
         data["org_name"] = DEFAULT_ORG_NAME
     return NetworkSpec(**data)

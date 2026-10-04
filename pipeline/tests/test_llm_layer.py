@@ -140,6 +140,14 @@ def test_raises_requirement_service_error_after_repeated_rate_limit(mock_client)
 
 
 @patch("pipeline.llm_layer.client")
+def test_non_network_input_is_rejected_without_retrying(mock_client):
+    mock_client.messages.create.return_value = _fake_response('{"not_a_network": "it names a fruit"}')
+    with pytest.raises(RequirementParseError, match="doesn't look like a network request"):
+        parse_requirements("banana")
+    assert mock_client.messages.create.call_count == 1
+
+
+@patch("pipeline.llm_layer.client")
 def test_raises_requirement_service_error_immediately_on_auth_failure(mock_client):
     mock_client.messages.create.side_effect = _auth_error()
     with pytest.raises(RequirementServiceError, match="ANTHROPIC_API_KEY"):
