@@ -22,8 +22,8 @@ import ipaddress
 import re
 
 from shared.schema import NetworkPlan, DeviceConfig
+from engine.taxonomy import ACCESS_SWITCH_PORTS
 
-ACCESS_SWITCH_PORTS = 48
 L3_NODE_TYPES = {"router", "firewall", "core_switch"}
 TRANSIT_CANDIDATES = ["10.255.255.0/24", "172.31.255.0/24", "192.168.255.0/24"]
 HSRP_GROUP = 1

@@ -25,6 +25,22 @@ SEGMENT_CATALOG = {
 CUSTOM_VLAN_START = 100
 CUSTOM_VLAN_STEP = 10
 
+# Other names the LLM uses for catalog segments. Without these, "guest wifi"
+# as a department became a second, un-isolated guest network next to the
+# real one.
+SEGMENT_ALIASES = {
+    **dict.fromkeys(
+        ["guests", "guestwifi", "guest-wifi", "guest-wi-fi", "guest-wireless", "guest-network",
+         "visitor", "visitors", "visitor-wifi", "visitor-wi-fi", "public-wifi", "public-wi-fi"],
+        "guest",
+    ),
+    **dict.fromkeys(["employee", "employees", "corporate"], "staff"),
+    **dict.fromkeys(["voice", "phones", "ip-phones", "voip-phones", "telephony"], "voip"),
+    **dict.fromkeys(["server", "server-room", "datacenter", "data-center"], "servers"),
+    **dict.fromkeys(["internet-of-things", "iot-devices", "smart-devices"], "iot"),
+    **dict.fromkeys(["mgmt", "network-management", "device-management"], "management"),
+}
+
 # Rough subnet sizing guidance: user_count -> suggested host bits.
 # e.g. up to 30 users fits a /27 (30 usable hosts).
 SUBNET_SIZE_GUIDANCE = [
@@ -35,9 +51,10 @@ SUBNET_SIZE_GUIDANCE = [
     (510, 23),
 ]
 
-# Topology scaling: one 48-port access switch per this many users, one AP
-# per this many wireless clients.
-USERS_PER_ACCESS_SWITCH = 48
+# Topology scaling: 48-port access switches, enough of them that every user
+# gets a port after the core uplinks and APs take theirs; one AP per this
+# many wireless clients.
+ACCESS_SWITCH_PORTS = 48
 CLIENTS_PER_AP = 25
 
 
@@ -52,5 +69,7 @@ def suggest_prefix_length(host_count: int) -> int:
 
 
 def normalize_segment(name: str) -> str:
-    """'Front Desk ' -> 'front-desk', so LLM output maps to stable VLAN names."""
-    return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+    """'Front Desk ' -> 'front-desk', 'Guest WiFi' -> 'guest', so LLM output
+    maps to stable VLAN names."""
+    slug = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+    return SEGMENT_ALIASES.get(slug, slug)

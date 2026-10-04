@@ -171,3 +171,15 @@ def test_losing_the_only_access_switch_cuts_everyone_off():
 def test_unknown_device_is_rejected():
     with pytest.raises(SimulationError, match="nope"):
         simulate(_plan(), ["nope"])
+
+
+def test_sabotaged_plans_simulate_without_crashing():
+    # duplicate_vlan_id sent replies to the "internet" pseudo-node, a KeyError (HTTP 500).
+    from engine.demo import list_sabotages, break_design
+    plan = _plan()
+    for sabotage in list_sabotages(plan):
+        broken, _, _ = break_design(plan, sabotage.key)
+        try:
+            simulate(broken)
+        except SimulationError:
+            pass  # a clean 422 is fine; anything else is a crash

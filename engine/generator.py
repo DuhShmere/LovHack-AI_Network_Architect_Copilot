@@ -20,13 +20,20 @@ from engine.taxonomy import (
     SEGMENT_CATALOG,
     CUSTOM_VLAN_START,
     CUSTOM_VLAN_STEP,
-    USERS_PER_ACCESS_SWITCH,
+    ACCESS_SWITCH_PORTS,
     CLIENTS_PER_AP,
     normalize_segment,
     suggest_prefix_length,
 )
 
 DEFAULT_BASE_CIDR = "10.0.0.0/16"
+# With no preferred base, a network too big for the /16 grows into the rest
+# of 10.0.0.0/8 instead of failing.
+MAX_DEFAULT_BASE_PREFIX = 8
+# One site, two cores, every access switch on both: past this it needs a
+# distribution layer, and the failure analysis (every device, one at a
+# time) gets slow enough to tie up the server.
+MAX_USERS = 5000
 
 
 class PlanGenerationError(ValueError):
@@ -37,11 +44,36 @@ def generate_plan(spec: NetworkSpec) -> NetworkPlan:
     """Turn a structured spec into a concrete IP/VLAN + topology plan."""
     if spec.user_count < 1:
         raise PlanGenerationError(f"user_count must be at least 1, got {spec.user_count}")
+    if spec.user_count > MAX_USERS:
+        raise PlanGenerationError(
+            f"{spec.user_count:,} users is beyond what this designs: single-site networks of up to "
+            f"{MAX_USERS:,} users. Bigger sites need a distribution layer or several sites."
+        )
 
+    spec = _with_implied_requirements(spec)
     nodes, links = _build_topology(spec)
     segments = _resolve_segments(spec)
-    vlans = _allocate_vlans(spec, segments, device_count=len(nodes))
+    vlans, widened_base = _allocate_vlans(spec, segments, device_count=len(nodes))
+    if widened_base:
+        spec = _with_assumption(
+            spec, f"Base network widened to {widened_base}: {spec.user_count} users don't fit in {DEFAULT_BASE_CIDR}"
+        )
     return NetworkPlan(spec=spec, vlans=vlans, nodes=nodes, links=links)
+
+
+def _with_implied_requirements(spec: NetworkSpec) -> NetworkSpec:
+    """Fill in what the spec implies but didn't say, and note it as an assumption."""
+    if spec.guest_wifi_isolated and not spec.needs_guest_wifi:
+        spec = _with_assumption(spec, "Guest Wi-Fi added, since isolating it was requested")
+        spec.needs_guest_wifi = True
+    return spec
+
+
+def _with_assumption(spec: NetworkSpec, note: str) -> NetworkSpec:
+    # A refined spec comes back carrying the notes from its first design.
+    if note in spec.assumptions:
+        return spec.model_copy()
+    return spec.model_copy(update={"assumptions": [*spec.assumptions, note]})
 
 
 # ---------------------------------------------------------------------------
@@ -73,7 +105,8 @@ def _segment_host_count(name: str, spec: NetworkSpec, device_count: int) -> int:
 
 def _allocate_vlans(
     spec: NetworkSpec, segments: list[str], device_count: int
-) -> list[VLANAllocation]:
+) -> tuple[list[VLANAllocation], ipaddress.IPv4Network | None]:
+    """The VLANs, plus the base network if it had to be widened past the default."""
     try:
         base = ipaddress.ip_network(spec.preferred_base_cidr or DEFAULT_BASE_CIDR, strict=False)
     except ValueError as e:
@@ -81,6 +114,32 @@ def _allocate_vlans(
     if base.version != 4:
         raise PlanGenerationError(f"Only IPv4 base CIDRs are supported, got {base}")
 
+    wanted = _wanted_vlans(spec, segments, device_count)
+    needed = _smallest_prefix_fitting(wanted)
+    if needed < base.prefixlen:
+        if spec.preferred_base_cidr or needed < MAX_DEFAULT_BASE_PREFIX:
+            raise PlanGenerationError(
+                f"{base} is too small: {len(wanted)} VLANs sized for {spec.user_count} users "
+                f"need at least a /{needed}."
+            )
+        base = base.supernet(new_prefix=needed)
+    subnets = _vlan_aligned_subnets(base, wanted) or _packed_subnets(base, wanted)
+    vlans = [
+        VLANAllocation(vlan_id=vlan_id, name=name, subnet_cidr=str(subnets[vlan_id]), purpose=purpose)
+        for vlan_id, name, purpose, _ in sorted(wanted)
+    ]
+    widened = base if str(base) != DEFAULT_BASE_CIDR and not spec.preferred_base_cidr else None
+    return vlans, widened
+
+
+def _smallest_prefix_fitting(wanted) -> int:
+    """Largest-first packing of power-of-two blocks leaves no gaps, so they
+    fit exactly when their sizes sum to no more than the base."""
+    total = sum(2 ** (32 - prefix) for *_, prefix in wanted)
+    return 32 - (total - 1).bit_length()
+
+
+def _wanted_vlans(spec: NetworkSpec, segments: list[str], device_count: int) -> list[tuple]:
     # (vlan_id, name, purpose, prefix_len)
     wanted = []
     next_custom = CUSTOM_VLAN_START
@@ -95,12 +154,7 @@ def _allocate_vlans(
         # +1 so the gateway address fits alongside the hosts.
         prefix = suggest_prefix_length(_segment_host_count(name, spec, device_count) + 1)
         wanted.append((vlan_id, name, purpose, prefix))
-
-    subnets = _vlan_aligned_subnets(base, wanted) or _packed_subnets(base, wanted)
-    return [
-        VLANAllocation(vlan_id=vlan_id, name=name, subnet_cidr=str(subnets[vlan_id]), purpose=purpose)
-        for vlan_id, name, purpose, _ in sorted(wanted)
-    ]
+    return wanted
 
 
 def _vlan_aligned_subnets(base, wanted):
@@ -192,7 +246,8 @@ def _build_topology(spec: NetworkSpec) -> tuple[list[TopologyNode], list[Topolog
         link("core1", "core2", "trunk")
 
     # Access layer: every access switch uplinks to every core switch.
-    access_count = math.ceil(spec.user_count / USERS_PER_ACCESS_SWITCH)
+    ap_count = math.ceil(spec.user_count / CLIENTS_PER_AP)
+    access_count = _access_switch_count(spec.user_count, uplinks=len(cores), ap_count=ap_count)
     access_ids = [f"access{i}" for i in range(1, access_count + 1)]
     for i, access_id in enumerate(access_ids, start=1):
         node(access_id, "access_switch", f"Access Switch {i}")
@@ -200,10 +255,18 @@ def _build_topology(spec: NetworkSpec) -> tuple[list[TopologyNode], list[Topolog
             link(core_id, access_id, "trunk")
 
     # APs, spread round-robin across access switches.
-    ap_count = math.ceil(spec.user_count / CLIENTS_PER_AP)
     for i in range(1, ap_count + 1):
         ap_id = f"ap{i}"
         node(ap_id, "ap", f"Wireless AP {i}")
         link(access_ids[(i - 1) % access_count], ap_id, "access")
 
     return nodes, links
+
+
+def _access_switch_count(user_count: int, uplinks: int, ap_count: int) -> int:
+    """Fewest access switches whose ports hold every user, after each one's
+    core uplinks and its share of the APs are plugged in."""
+    count = math.ceil(user_count / ACCESS_SWITCH_PORTS)
+    while count * (ACCESS_SWITCH_PORTS - uplinks) - ap_count < user_count:
+        count += 1
+    return count

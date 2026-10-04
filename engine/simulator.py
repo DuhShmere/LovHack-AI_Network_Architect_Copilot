@@ -155,7 +155,8 @@ class _Network:
     def _access_serving(self, core: str) -> str | None:
         """A live access switch that can reach this core, i.e. where the hosts are."""
         reach = self._switch_reach(core)
-        return next((n for n in sorted(reach) if self.types[n] == "access_switch"), None)
+        # .get: a misrouted reply can end at the "internet" pseudo-node.
+        return next((n for n in sorted(reach) if self.types.get(n) == "access_switch"), None)
 
     def stranded(self) -> list[str]:
         cores = [n for n, t in self.types.items() if t == "core_switch" and self.up(n)]
