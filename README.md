@@ -76,8 +76,6 @@ Then open http://127.0.0.1:8000/.
 engine with no AI call: validation, break-it, the simulator and downloads
 all work. Only typing your own description, refine and ask need a key.
 
-A guided tour of the demo is in [`docs/demo_script.md`](docs/demo_script.md).
-
 ## Tests
 
 ```bash
