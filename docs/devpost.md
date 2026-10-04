@@ -64,7 +64,7 @@ no single point of failure"*. In under a minute you get:
   the configs back and evaluates them, and a packet-walking simulator.
 - **Dashboard:** plain HTML, CSS and JavaScript served by FastAPI, with no
   build step. The topology is hand-drawn SVG using standard network symbols.
-- **Tests:** 410 automated tests, including a check that every sabotage
+- **Tests:** over 400 automated tests, including a check that every sabotage
   trips only its own check and that a healthy redundant network really uses
   its primary internet line.
 - **Works offline:** built-in sample designs run the full engine with no AI

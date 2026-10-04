@@ -1,8 +1,8 @@
 """
 LLM layer: plain-English requirements -> structured NetworkSpec.
 
-Owner: Samir. Day 2 task. Works standalone against the Anthropic API
-without depending on engine/ at all.
+Owner: Samir. Works standalone against the Anthropic API without
+depending on engine/ at all.
 
 Also: refine_requirements() applies a plain-English change to an existing
 spec, and explain_design() answers questions about a finished design.

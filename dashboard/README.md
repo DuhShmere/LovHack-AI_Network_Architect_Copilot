@@ -1,8 +1,7 @@
 # Dashboard
 
 Owner: Samir. Plain HTML/CSS/JS, no build step -- served directly by FastAPI
-(`pipeline/api/main.py` mounts `dashboard/static/` at `/`). No ProjectAAL
-account or setup needed.
+(`pipeline/api/main.py` mounts `dashboard/static/` at `/`).
 
 ## Run it
 

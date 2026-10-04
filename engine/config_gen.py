@@ -1,20 +1,21 @@
 """
 Cisco-style config generator: NetworkPlan -> list[DeviceConfig].
 
-Owner: Nyles. Day 5 task. Only run this on a plan that has already
-passed validate_plan() -- don't generate configs for an invalid design.
+Owner: Nyles. Only run this on a plan that has already passed
+validate_plan() -- don't generate configs for an invalid design.
 
 Layout the configs assume:
   - Core switch(es) do inter-VLAN routing via SVIs (HSRP if there are two)
     and serve DHCP; the guest SVI carries an isolation ACL.
   - router <-> firewall <-> core hops are routed /30s carved from a
     transit block that doesn't collide with any VLAN.
-  - Edge routers NAT the internal subnets out their ISP-facing port.
+  - Edge routers NAT the internal subnets out their ISP-facing port, plus
+    the transit block so the firewalls' IP SLA probes get replies.
   - Access switches trunk to every core; remaining ports are staff access
     ports (with a voice VLAN if one exists). APs trunk staff + guest.
 
-Stretch goal: feed the output into containerlab to actually boot and
-verify the config instead of just printing text that looks plausible.
+Not done yet: booting the output in containerlab, to prove the configs run
+and not just that the simulator and config audit find them consistent.
 """
 
 import ipaddress

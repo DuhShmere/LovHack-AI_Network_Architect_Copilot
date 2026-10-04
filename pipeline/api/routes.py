@@ -1,6 +1,6 @@
 """
 API routes -- this is the ONE file that imports from both pipeline/ and
-engine/. It's the integration seam. Owner: Samir (Day 3-4 per schedule).
+engine/. It's the integration seam. Owner: Samir.
 """
 
 from fastapi import APIRouter, HTTPException
@@ -44,8 +44,8 @@ class DesignRequest(BaseModel):
 
 @router.post("/parse", response_model=NetworkSpec)
 def parse_only(req: DesignRequest) -> NetworkSpec:
-    """LLM-extraction only, no engine/ dependency -- lets the dashboard and
-    tests exercise the real parsing step while engine/ is still stubbed."""
+    """LLM extraction only, without running the engine -- for checking what
+    the AI understood from a description on its own."""
     try:
         return parse_requirements(req.description)
     except RequirementParseError as e:

@@ -2,7 +2,7 @@
 Requirement taxonomy: the enums/constants that define what kinds of
 requirements the LLM layer can extract and the generator can act on.
 
-Owner: Nyles. Day 1 task.
+Owner: Nyles.
 
 This is deliberately separate from shared/schema.py: schema.py is the
 *data shapes* both sides agree on, this file is *domain knowledge*
@@ -11,17 +11,6 @@ given user count, etc) that only the engine needs internally.
 """
 
 import re
-
-# Example starting point -- replace/expand with real taxonomy.
-
-STANDARD_SEGMENTS = [
-    "staff",
-    "guest",
-    "iot",
-    "voip",
-    "servers",
-    "management",
-]
 
 # Well-known segments -> (VLAN ID, purpose). Anything the LLM extracts that
 # isn't in here (e.g. "admin", "finance") gets a VLAN from CUSTOM_VLAN_START.

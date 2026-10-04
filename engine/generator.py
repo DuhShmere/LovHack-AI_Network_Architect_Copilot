@@ -2,8 +2,7 @@
 The generator: NetworkSpec -> NetworkPlan.
 
 Owner: Nyles. This is pure Python -- no API, no LLM calls -- so it's fully
-testable standalone (Day 2 task: hand Samir a working generate_plan()
-function by end of Day 3).
+testable standalone.
 """
 
 import ipaddress

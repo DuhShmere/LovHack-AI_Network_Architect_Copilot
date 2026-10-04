@@ -1,7 +1,7 @@
 """
 FastAPI app entrypoint.
 
-Owner: Samir. Day 1 skeleton, wired up incrementally through Day 4.
+Owner: Samir. Serves the API and the dashboard (dashboard/static at /).
 Run with: uvicorn pipeline.api.main:app --reload
 """
 

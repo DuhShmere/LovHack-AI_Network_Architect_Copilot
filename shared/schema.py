@@ -2,14 +2,13 @@
 THE CONTRACT.
 
 This file is the single source of truth for the data shapes that pass
-between Nyles's engine/ and Samir's pipeline/. Agree on this together
-on Day 1 (Sept 26). After that, changes to this file should be rare and
-should always be discussed first -- it's the one place both of you touch.
+between Nyles's engine/ and Samir's pipeline/. It's the one file both of
+us touch, so changes to it are rare and always agreed first.
 
 Everything downstream (LLM output, generator input/output, validator
-input/output, config generator input) is typed against these models so
-mismatches show up as import/type errors immediately, not as silent bugs
-during integration on Day 8.
+input/output, config generator input) is typed against these models, so a
+mismatch shows up immediately as a validation or type error instead of as
+a silent bug at integration time.
 """
 
 from __future__ import annotations
