@@ -263,12 +263,17 @@ def check_redundancy_present(plan: NetworkPlan) -> ValidationCheck:
     if level == RedundancyLevel.dual_wan_plus_switch_redundancy:
         cores = set(node_ids_of_type(plan, "core_switch"))
         adj = _adjacency(plan)
-        # 0 core uplinks is a disconnected switch, which topology_connected reports.
-        single_homed = [a for a in node_ids_of_type(plan, "access_switch") if len(adj[a] & cores) == 1]
+        # A switch with 0 core uplinks that can't reach the WAN is left to
+        # topology_connected; one that can is hanging off another switch.
+        online = _reachable(adj, set(node_ids_of_type(plan, "wan_uplink")))
+        single_homed = [
+            a for a in node_ids_of_type(plan, "access_switch")
+            if len(adj[a] & cores) == 1 or (not adj[a] & cores and a in online)
+        ]
         if len(cores) < 2:
             problems.append(f"switch redundancy requires 2 core switches, found {len(cores)}")
         elif single_homed:
-            problems.append(f"access switches with a single core uplink: {', '.join(single_homed)}")
+            problems.append(f"access switches without two core uplinks: {', '.join(single_homed)}")
         else:
             details.append(f"{len(cores)} core switches with every access switch dual-homed")
 

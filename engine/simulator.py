@@ -204,10 +204,16 @@ class _Network:
         key = (node, track)
         if key not in self._track_cache:
             dev = self.devices[node]
-            target = dev.sla_targets.get(dev.tracks.get(track))
+            sla = dev.tracks.get(track)
+            target = dev.sla_targets.get(sla)
             ok = False
             if target is not None:
-                ok, *_ = self._walk(node, None, target, None, None, use_tracks=False)
+                # Send the probe from its real source address so the edge
+                # router's NAT applies to it: an un-NATed probe gets no reply.
+                source = dict(dev.addresses).get(dev.sla_sources.get(sla))
+                src_net = ipaddress.ip_network(f"{source.ip}/32") if source else None
+                dst_net = ipaddress.ip_network(f"{target}/32") if source else None
+                ok, *_ = self._walk(node, None, target, dst_net, src_net, use_tracks=False)
             self._track_cache[key] = ok
         return self._track_cache[key]
 

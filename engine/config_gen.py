@@ -220,6 +220,9 @@ def _render_router(node, ctx: _Context) -> str:
     wan_ports = [ctx.ports[(me, p)] for p in ctx.neighbors_of_type(me, "wan_uplink")]
     lines += ["ip access-list standard NAT-INSIDE"]
     lines += [f" permit {_wild(ctx.nets[v.vlan_id])}" for v in ctx.vlans]
+    # The firewalls' IP SLA probes come from their transit addresses; without
+    # NAT they get no reply, track 1 stays down and the primary route never installs.
+    lines += [f" permit {_wild(ctx.transit)}"]
     lines += ["!"]
     if wan_ports:
         lines += [f"ip nat inside source list NAT-INSIDE interface {wan_ports[0]} overload", "!"]
