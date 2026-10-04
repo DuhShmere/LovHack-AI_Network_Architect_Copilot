@@ -553,14 +553,12 @@ td.mono { font-family: var(--mono); }
 .node.on-path .node-label { fill: var(--green); }
 .failed-x { stroke: var(--fail); stroke-width: 6; stroke-linecap: round; fill: none; }
 
-/* --- Bill of materials / configs / ask ------------------------------------- */
+/* --- Parts list / configs / ask --------------------------------------------- */
 
 th.num, td.num { text-align: right; }
 .item { font-weight: 700; }
 .item-sub { color: var(--text-dim); font-size: 0.9rem; }
-tfoot th { text-transform: none; letter-spacing: 0; font-size: 1rem; color: var(--text); text-align: right; }
-tfoot td { font-weight: 700; }
-tfoot tr:first-child th, tfoot tr:first-child td { border-top: 2px solid var(--text); }
+.parts-category { text-align: left; padding-top: 20px; color: var(--green); }
 .fine-print { margin: 16px 0 0; padding: 0; list-style: none; color: var(--text-dim); font-size: 0.85rem; text-align: center; }
 
 .configs-actions { margin: 0 0 24px; }

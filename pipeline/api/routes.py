@@ -19,7 +19,7 @@ from engine.validator import validate_plan
 from engine.config_gen import generate_configs
 from engine.demo import SabotageError, SabotageInfo, break_design, list_sabotages
 from engine.simulator import ResilienceReport, SimulationError, SimulationReport, resilience, simulate
-from engine.bom import BillOfMaterials, bill_of_materials
+from engine.parts_list import PartsList, parts_list
 from engine.plan_diff import diff_plans
 from engine.samples import SampleInfo, list_samples, sample_spec
 
@@ -192,7 +192,7 @@ def resilience_report(req: PlanRequest) -> ResilienceReport:
         raise HTTPException(status_code=422, detail=str(e))
 
 
-@router.post("/bom", response_model=BillOfMaterials)
-def bom(req: PlanRequest) -> BillOfMaterials:
-    """Budgetary bill of materials for the design's devices."""
-    return bill_of_materials(req.plan)
+@router.post("/parts", response_model=PartsList)
+def parts(req: PlanRequest) -> PartsList:
+    """What to get to build the design: specs, example models, quantities, budgetary cost."""
+    return parts_list(req.plan)

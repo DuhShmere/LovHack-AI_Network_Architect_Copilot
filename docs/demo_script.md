@@ -79,8 +79,8 @@ core1". The guest network really can't reach the clinic.
 
 ## 7. Close (10s)
 
-**Download all configs (.zip)** and the **Bill of materials**: from a
-paragraph to a costed, validated, deployable design in under a minute.
+**Download all configs (.zip)** and the **Parts list**: from a paragraph
+to a validated design and a shopping list in under a minute.
 
 ## If something goes wrong
 
@@ -89,4 +89,4 @@ paragraph to a costed, validated, deployable design in under a minute.
   generated configs: ACLs, static routes, HSRP failover, IP SLA tracking,
   NAT and the return path.
 - Someone asks about limits: configs are Cisco IOS-*style* and illustrative;
-  prices are budgetary estimates, not quotes.
+  the parts list gives specs and example models, not a quote.

@@ -33,7 +33,8 @@ and get:
   hop through the generated configs (ACLs, routes, HSRP, IP SLA tracking,
   NAT, return path) to show what still works.
 - **Cisco IOS-style configs** for every device (one at a time or as a zip),
-  a budgetary **bill of materials**, and a one-page **PDF of the diagram**.
+  a **parts list** (what to get, the specs this design needs and an example
+  model, also as a CSV), and a one-page **PDF of the diagram**.
 - **Refine and ask**: change the design in plain English and see exactly
   what changed, or ask a question and get an answer that cites the design's
   own devices and config lines.
@@ -93,7 +94,7 @@ calls the real AI skips itself when no API key is set.
 |---|---|---|
 | `pipeline/` | Samir | AI layer (`llm_layer.py`) and the FastAPI app (`api/`) |
 | `dashboard/` | Samir | The web UI: plain HTML, CSS and JS with no build step, served by FastAPI |
-| `engine/` | Nyles | Generator, validator, config generator and audit, simulator, sabotages, bill of materials |
+| `engine/` | Nyles | Generator, validator, config generator and audit, simulator, sabotages, parts list |
 | `shared/schema.py` | Both | The Pydantic models that are the contract between `pipeline/` and `engine/` |
 | `docs/` | Both | The schema in plain language, the demo script and the Devpost writeup |
 
@@ -102,6 +103,5 @@ calls the real AI skips itself when no API key is set.
 - The configs are Cisco IOS-*style* and illustrative: they're checked by our
   config audit and simulator but haven't been booted on real hardware or in
   an emulator yet.
-- Bill-of-materials prices are budgetary estimates, not quotes.
 - It designs single-site networks of up to 5,000 users from scratch; it
   doesn't import an existing network.

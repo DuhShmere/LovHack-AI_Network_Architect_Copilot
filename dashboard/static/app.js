@@ -180,7 +180,7 @@ function showDesign(result) {
   renderResult(result);
   loadSabotages(result.plan);
   loadSimulation(result.plan);
-  loadBom(result.plan);
+  loadParts(result.plan);
   resetAsk(result.plan);
 }
 
@@ -819,37 +819,48 @@ function showFlow(flow) {
   drawTopology();
 }
 
-// --- Bill of materials -------------------------------------------------------
+// --- Parts list --------------------------------------------------------------
 
-const money = (n) => `$${n.toLocaleString("en-US")}`;
+let partsList = null; // the loaded list, for the CSV download
 
-async function loadBom(plan) {
-  const section = document.getElementById("bom-section");
-  const tbody = document.querySelector("#bom-table tbody");
-  const tfoot = document.querySelector("#bom-table tfoot");
-  const res = await postJSON("/bom", { plan }).catch(() => null);
+async function loadParts(plan) {
+  const section = document.getElementById("parts-section");
+  const tbody = document.querySelector("#parts-table tbody");
+  const res = await postJSON("/parts", { plan }).catch(() => null);
   if (plan !== originalResult.plan) return;
   section.hidden = !res || !res.ok;
   if (section.hidden) return;
 
-  const bom = res.body;
+  partsList = res.body;
   tbody.innerHTML = "";
-  for (const line of bom.lines) {
-    const per = line.recurring ? "/mo" : "";
+  let category = null;
+  for (const part of partsList.parts) {
+    if (part.category !== category) {
+      category = part.category;
+      tbody.insertRow().innerHTML = `<th colspan="3" class="parts-category">${escapeHtml(category)}</th>`;
+    }
     const tr = tbody.insertRow();
     tr.innerHTML = `
-      <td><div class="item">${escapeHtml(line.item)}</div><div class="item-sub">${escapeHtml(line.description)}</div></td>
-      <td class="mono">${line.quantity}</td>
-      <td class="mono num">${money(line.unit_cost)}${per}</td>
-      <td class="mono num">${money(line.subtotal)}${per}</td>`;
+      <td><div class="item">${escapeHtml(part.name)}</div><div class="item-sub">${escapeHtml(part.why)}</div></td>
+      <td><div>${escapeHtml(part.look_for)}</div><div class="item-sub">e.g. ${escapeHtml(part.example)}</div></td>
+      <td class="mono num">${part.quantity}</td>`;
   }
-  tfoot.innerHTML = `
-    <tr><th colspan="3">One-time total</th><td class="mono num">${money(bom.one_time_total)}</td></tr>
-    <tr><th colspan="3">Monthly recurring</th><td class="mono num">${money(bom.monthly_total)}/mo</td></tr>`;
-  const notes = document.getElementById("bom-notes");
+  const notes = document.getElementById("parts-notes");
   notes.innerHTML = "";
-  for (const n of bom.notes) notes.appendChild(document.createElement("li")).textContent = n;
+  for (const n of partsList.notes) notes.appendChild(document.createElement("li")).textContent = n;
 }
+
+document.getElementById("download-parts-btn").addEventListener("click", () => {
+  if (!partsList || !originalResult) return;
+  const cell = (v) => `"${String(v).replace(/"/g, '""')}"`;
+  const rows = [["Category", "Part", "What to look for", "Example model", "Why", "Quantity"]];
+  for (const p of partsList.parts) rows.push([p.category, p.name, p.look_for, p.example, p.why, p.quantity]);
+  rows.push([], ...partsList.notes.map((n) => ["", n]));
+  const csv = rows.map((r) => r.map(cell).join(",")).join("\r\n");
+  const slug = originalResult.plan.spec.org_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "network";
+  // The BOM tells Excel the file is UTF-8.
+  downloadBlob(new Blob([String.fromCharCode(0xfeff) + csv], { type: "text/csv" }), `${slug}-parts-list.csv`);
+});
 
 // --- Download all configs (.zip) ---------------------------------------------
 

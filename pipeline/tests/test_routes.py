@@ -264,11 +264,12 @@ def test_resilience_names_single_points_of_failure():
     assert "firewall1" in r.json()["single_points_of_failure"]
 
 
-def test_bom_totals():
-    r = client.post("/bom", json={"plan": _real_plan()})
+def test_parts_list():
+    r = client.post("/parts", json={"plan": _real_plan()})
     assert r.status_code == 200
-    body = r.json()
-    assert body["one_time_total"] > 0 and body["monthly_total"] == 800  # two circuits
+    parts = r.json()["parts"]
+    assert all(p["look_for"] and p["example"] and p["why"] and p["quantity"] > 0 for p in parts)
+    assert not any("cost" in key or "total" in key for p in parts for key in p)
 
 
 @patch("pipeline.llm_layer.client")

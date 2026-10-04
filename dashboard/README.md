@@ -24,7 +24,7 @@ Then open http://127.0.0.1:8000/ in a browser.
 - Simulate: fail devices and see VLAN reachability (`POST /simulate`), plus
   single points of failure (`POST /resilience`); click a cell to trace its
   path on the topology
-- VLAN/IP allocation table and bill of materials (`POST /bom`)
+- VLAN/IP allocation table and parts list (`POST /parts`, downloadable as CSV)
 - Config downloads, one device at a time or all as a .zip (skips ISP
   `wan_uplink` nodes, which don't get a config -- that's the ISP's gear)
 - Ask about this design (`POST /explain`)

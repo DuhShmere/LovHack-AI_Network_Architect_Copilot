@@ -28,7 +28,7 @@
         <a href="#validation-section">Validation</a>
         <a href="#topology-section">Topology</a>
         <a href="#simulate-section">Simulate</a>
-        <a href="#bom-section">Cost</a>
+        <a href="#parts-section">Parts</a>
         <a href="#configs-section">Configs</a>
         <a href="#ask-section">Ask</a>
       </div>
@@ -183,22 +183,24 @@
       </div>
     </section>
 
-    <section class="band band-gray" id="bom-section">
+    <section class="band band-gray" id="parts-section">
       <div class="wrap">
         <div class="section-head">
-          <h2>Bill of materials</h2>
-          <p class="section-sub">What to buy for this design, with budgetary pricing.</p>
+          <h2>Parts list</h2>
+          <p class="section-sub">Everything to get to build this design: the specs it needs, an example model, and why.</p>
+        </div>
+        <div class="diagram-actions configs-actions">
+          <button type="button" id="download-parts-btn" class="outline-btn">Download parts list (.csv)</button>
         </div>
         <div class="card table-card">
-          <table id="bom-table">
+          <table id="parts-table">
             <thead>
-              <tr><th>Item</th><th>Qty</th><th class="num">Unit</th><th class="num">Subtotal</th></tr>
+              <tr><th>Part</th><th>What to look for</th><th class="num">Qty</th></tr>
             </thead>
             <tbody></tbody>
-            <tfoot></tfoot>
           </table>
         </div>
-        <ul id="bom-notes" class="fine-print"></ul>
+        <ul id="parts-notes" class="fine-print"></ul>
       </div>
     </section>
 

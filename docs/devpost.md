@@ -44,7 +44,8 @@ no single point of failure"*. In under a minute you get:
   SLA tracking, NAT and the return path) to show which networks still reach
   the internet and which can reach each other.
 - **Cisco IOS-style configs** for every device, downloadable as a zip, a
-  budgetary **bill of materials**, and a one-page **PDF of the diagram**.
+  **parts list** (the specs each part needs and an example model,
+  downloadable as CSV), and a one-page **PDF of the diagram**.
 - **Refine and ask**: change the design in plain English ("make it 150 users
   and add a pharmacy network") and see exactly what changed, or ask a
   question and get an answer that cites this design's actual devices and
@@ -95,7 +96,7 @@ no single point of failure"*. In under a minute you get:
   a model's opinion.
 - The simulator walks packets through the configs we generate, so
   "redundant" means a tested failover path, not a second box on a diagram.
-- A paragraph of English becomes a validated, costed, deployable-looking
+- A paragraph of English becomes a validated, deployable-looking
   design in under a minute, and it still works with the internet unplugged.
 
 ## What we learned
@@ -121,5 +122,4 @@ no single point of failure"*. In under a minute you get:
 ## Limitations
 
 The configs are Cisco IOS-*style* and illustrative; they haven't been booted
-on real hardware yet. Bill-of-materials prices are budgetary estimates, not
-quotes.
+on real hardware yet.
