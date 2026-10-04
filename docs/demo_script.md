@@ -15,15 +15,31 @@ deterministic code proves it's correct, instead of a second AI guessing.**
 Paste this, or click **24/7 vet hospital, fully redundant** if the network
 is shaky:
 
-> Northwind Veterinary Hospital, 80 staff. Separate networks for clinical,
-> front desk, and lab/IoT devices. Guest Wi-Fi for the waiting room, fully
-> isolated. We're a 24/7 emergency hospital, so we need two internet
-> providers and redundant core switches. Use 10.50.0.0/16.
+> Northwind Veterinary Hospital: 58 full-time staff, 22 part-time vet techs
+> and 10 visiting specialists, plus 6 billing people who work from home. We
+> need separate networks for clinical, the front desk, and our kennel
+> cameras, smart locks and X-ray machine. Guest Wi-Fi for the waiting room
+> that can't touch anything else. We're a 24/7 emergency hospital, so no
+> single internet outage or switch failure can take us down. Use
+> 10.50.0.0/16. Front desk phones need voice QoS, and exam room ports need
+> 802.1X.
+
+It never says a headcount, "redundant", or "IoT" on purpose: the AI has to
+work those out, which is what step 2 shows.
 
 ## 2. What we understood (20s)
 
-Point at **Assumptions**: the AI shows its working (headcount math,
-redundancy it inferred) so a human can check it, not trust it blindly.
+Point at **Assumptions**: the AI shows its working so a human can check it,
+not trust it blindly:
+- **Headcount math**: 58 + 22 + 10 = 90, remote billing staff excluded.
+- **Redundancy inferred** from "24/7" and "no single ... failure".
+- **IoT segment**: cameras, locks and the X-ray machine grouped together.
+
+The QoS and 802.1X asks show up under notes: things it heard but the engine
+doesn't design for yet, said out loud instead of silently dropped.
+
+If it ever counts the remote staff (96 users), that's a bonus: point at the
+assumption, then in step 6 type *"don't count the remote billing staff"*.
 
 ## 3. The proof: validation (40s)
 
@@ -55,8 +71,9 @@ core1". The guest network really can't reach the clinic.
 
 ## 6. Change it and ask it (40s)
 
-- Refine box: *"make it 150 users and add a VoIP VLAN"*. It redesigns,
-  re-proves it, and lists exactly what changed.
+- Refine box: *"we're opening a second wing: make it 150 users and add a
+  separate network for the pharmacy"*. It redesigns, re-proves it, and lists
+  exactly what changed.
 - Ask: *"What happens if the primary internet connection fails?"* The answer
   cites this design's actual devices and config lines.
 

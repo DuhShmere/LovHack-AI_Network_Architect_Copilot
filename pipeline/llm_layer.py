@@ -38,12 +38,20 @@ SPEC_SHAPE = """\
   "assumptions": [string, ...]
 }"""
 
+# Segment names become VLAN names, and Cisco caps those at 32 characters.
+SEGMENT_NAMING = """\
+Each entry in "department_segments" is a short name of 1-3 words, at most 20
+characters (e.g. "clinical", "front desk", "iot"). Put details such as which
+devices a segment holds in "assumptions", never in the name.
+"""
+
 EXTRACTION_SYSTEM_PROMPT = f"""\
 You extract structured network requirements from a plain-English description.
 Respond ONLY with a JSON object matching this shape, nothing else:
 
 {SPEC_SHAPE}
 
+{SEGMENT_NAMING}
 If the description doesn't name the organization, use a short descriptive
 name based on what it is (e.g. "Dental Clinic", "Main Office").
 
@@ -63,6 +71,7 @@ single internet connection is "none"):
 
 {SPEC_SHAPE}
 
+{SEGMENT_NAMING}
 Change only what the request asks for, plus anything it directly implies.
 In "assumptions", list what you inferred for this change, and keep earlier
 assumptions that still hold. If the request asks for something this shape
